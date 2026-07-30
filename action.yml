@@ -1,0 +1,90 @@
+name: aicheck
+description: >-
+  Fail the build if your PR ships an exposed self-hosted AI service.
+  Live-probes Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, MCP servers
+  and 10 more — graded report, fix-card links, SARIF annotations.
+author: unauthdev
+branding:
+  icon: shield
+  color: orange
+inputs:
+  target:
+    description: "Host to probe (e.g. localhost). No port — the well-known AI-service ports are probed."
+    required: true
+  fail-grade:
+    description: "Fail the check if the grade is this or worse: A (anything), C, D, F (critical only)."
+    required: false
+    default: "F"
+  services:
+    description: "Comma-separated product filter (e.g. ollama,n8n). Empty = all 17 products."
+    required: false
+    default: ""
+  upload-sarif:
+    description: "Upload results to GitHub code scanning (needs `security-events: write`)."
+    required: false
+    default: "true"
+outputs:
+  grade:
+    description: "The scan grade: A (clean), C, D, or F (critical exposure)."
+    value: ${{ steps.scan.outputs.grade }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      shell: bash
+      run: python -m pip install --quiet httpx pyyaml
+
+    - name: Run aicheck (SARIF)
+      id: scan
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        TARGET: ${{ inputs.target }}
+        SERVICES: ${{ inputs.services }}
+        FAIL_GRADE: ${{ inputs.fail-grade }}
+      run: |
+        python -m aicheck.scan "$TARGET" --allow-private --format sarif \
+          ${SERVICES:+--services "$SERVICES"} --fail-grade "$FAIL_GRADE" \
+          > "$GITHUB_WORKSPACE/aicheck.sarif" && code=0 || code=$?
+        echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+        if [ -s "$GITHUB_WORKSPACE/aicheck.sarif" ]; then
+          grade=$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/aicheck.sarif'))['runs'][0]['properties']['grade'])")
+          echo "grade=$grade" >> "$GITHUB_OUTPUT"
+        fi
+        exit 0
+
+    - name: Scan log (human-readable)
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        TARGET: ${{ inputs.target }}
+        SERVICES: ${{ inputs.services }}
+      run: |
+        python -m aicheck.scan "$TARGET" --allow-private \
+          ${SERVICES:+--services "$SERVICES"} || true
+
+    - name: Upload SARIF to code scanning
+      if: inputs.upload-sarif == 'true' && steps.scan.outputs.exit_code != '2'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: aicheck.sarif
+
+    - name: Enforce fail-grade
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.scan.outputs.exit_code }}
+        FAIL_GRADE: ${{ inputs.fail-grade }}
+      run: |
+        if [ "$EXIT_CODE" = "1" ]; then
+          echo "::error::aicheck grade is at or worse than $FAIL_GRADE — see the code-scanning annotations and the fix cards."
+          exit 1
+        fi
+        if [ "$EXIT_CODE" != "0" ]; then
+          echo "::error::aicheck failed to run (exit $EXIT_CODE)."
+          exit 1
+        fi
