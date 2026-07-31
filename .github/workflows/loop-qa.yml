@@ -35,8 +35,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: action
-      - name: clone the site engine (public repo; GITHUB_TOKEN is scoped to
-          this repo, so actions/checkout's API call 404s cross-repo)
+          persist-credentials: false   # the workflow token is scoped to this
+                                       # repo and breaks the cross-repo clone
+      - name: clone the site engine (public repo, anonymous)
         run: git clone --depth 1 https://github.com/unauthdev/aicheck.git site
       - uses: actions/setup-python@v5
         with:
