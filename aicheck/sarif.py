@@ -11,7 +11,32 @@ from __future__ import annotations
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 LEVEL = {"CRITICAL": "error", "HIGH": "warning", "MEDIUM": "note"}
+# Numeric severity: GitHub orders results by it; GitLab needs it to render
+# CRITICAL as Critical (its level mapping alone caps at High).
+SECURITY_SEVERITY = {"CRITICAL": "9.5", "HIGH": "7.5", "MEDIUM": "5.0"}
 BASE_URL = "https://unauth.dev"
+
+
+def _rule(f: dict) -> dict:
+    props = {
+        "severity": f["severity"],
+        "product": f["product"],
+        "security-severity": SECURITY_SEVERITY.get(f["severity"], "5.0"),
+    }
+    cid = f["check_id"]
+    if cid.startswith("cve-"):
+        # GitLab's dependency-scanning typer matches rule.properties.tags[]
+        # against the cve-YYYY-N pattern (lowercase) — the ruleId pattern it
+        # checks is uppercase, so the tags carry the typing.
+        props["tags"] = [cid, f["product"].lower()]
+    return {
+        "id": cid,
+        "name": f["product"],
+        "shortDescription": {"text": f["title"]},
+        "fullDescription": {"text": f.get("evidence") or f["title"]},
+        "helpUri": f"{BASE_URL}/fixes/{f['fix_card_id']}",
+        "properties": props,
+    }
 
 
 def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.0") -> dict:
@@ -19,14 +44,7 @@ def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.
     for f in findings:
         cid = f["check_id"]
         if cid not in rules:
-            rules[cid] = {
-                "id": cid,
-                "name": f["product"],
-                "shortDescription": {"text": f["title"]},
-                "fullDescription": {"text": f.get("evidence") or f["title"]},
-                "helpUri": f"{BASE_URL}/fixes/{f['fix_card_id']}",
-                "properties": {"severity": f["severity"], "product": f["product"]},
-            }
+            rules[cid] = _rule(f)
     results = []
     for f in findings:
         msg = f"{f['severity']}: {f['title']} — {f.get('evidence', '')}".strip(" —")
@@ -50,6 +68,7 @@ def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.
                 "driver": {
                     "name": "aicheck",
                     "version": version,
+                    "semanticVersion": version,
                     "informationUri": BASE_URL,
                     "rules": list(rules.values()),
                 },
