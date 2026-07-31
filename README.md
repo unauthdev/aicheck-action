@@ -94,8 +94,23 @@ smoke-test the wiring on first install.
 
 ## GitLab CI
 
-The engine is a plain CLI — GitLab support is config, not code. One scan,
-both renderings, pipeline fails on grade:
+The engine is a plain CLI — GitLab support is config, not code. The
+one-liner (preferred, uses the published image):
+
+```yaml
+aicheck:
+  image: ghcr.io/unauthdev/aicheck:v1
+  services:
+    - name: ollama/ollama:latest
+      alias: ollama
+  variables:
+    TARGET: ollama            # the service alias
+  script:
+    - python -m aicheck.scan "$TARGET" --allow-private --fail-grade F
+```
+
+The full version — one scan, SARIF artifact, pipeline fails on grade — with
+the source pinned to the v1 tag (never track main):
 
 ```yaml
 aicheck:
@@ -107,7 +122,7 @@ aicheck:
     TARGET: ollama            # the service alias — or localhost with a before_script install
   before_script:
     - pip install --quiet httpx pyyaml
-    - git clone --depth 1 https://github.com/unauthdev/aicheck-action.git /aicheck
+    - git clone --depth 1 --branch v1 https://github.com/unauthdev/aicheck-action.git /aicheck
   script:
     - cd /aicheck
     - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
@@ -129,18 +144,9 @@ report, MR widget) need Ultimate.
 
 ## Any CI with Docker
 
-Every platform that can run a container gets the one-line version:
-
-```yaml
-# gitlab, one-job version
-aicheck:
-  image: ghcr.io/unauthdev/aicheck:v1
-  script:
-    - python -m aicheck.scan "$TARGET" --allow-private --fail-grade F
-```
-
-The same image works on Bitbucket Pipelines, Azure DevOps, Jenkins, and bare
-CI runners.
+The same `ghcr.io/unauthdev/aicheck:v1` image works on Bitbucket Pipelines,
+Azure DevOps, Jenkins, and bare CI runners — anywhere that can run a
+container.
 
 ## CLI
 
