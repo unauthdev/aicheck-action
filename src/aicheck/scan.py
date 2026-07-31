@@ -23,7 +23,7 @@ import sys
 
 import httpx
 
-from . import recon, sarif, ssrf
+from . import __version__, recon, sarif, ssrf
 from .scoring import grade, run_checkers
 
 _BADNESS = {"A": 0, "C": 1, "D": 2, "F": 3}
@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-private", action="store_true",
                     help="allow internal targets (localhost, docker service names) — "
                          "for CI jobs probing their own services")
+    ap.add_argument("--version", action="version",
+                    version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
 
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
