@@ -37,8 +37,8 @@ jobs:
           path: action
           persist-credentials: false   # the workflow token is scoped to this
                                        # repo and breaks the cross-repo clone
-      - name: clone the site engine (public repo, anonymous)
-        run: git clone --depth 1 https://github.com/unauthdev/aicheck.git site
+      - name: clone the site engine (private repo, read-only PAT)
+        run: git clone --depth 1 https://x-access-token:${{ secrets.SITE_ENGINE_PAT }}@github.com/unauthdev/aicheck.git site
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
