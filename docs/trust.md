@@ -1,0 +1,65 @@
+# trust
+
+why you can run aicheck in your CI without taking our word for anything.
+
+## what the engine does
+
+one thing: read-only GETs to the target you give it, on the well-known
+AI-service ports. it asks for version, tags, and settings endpoints — the
+same metadata the unauth.dev scanner reads — and grades what answers.
+
+nothing else is ever dialed. no telemetry, no phone-home, no analytics, no
+beacon to unauth.dev. no logins, no POSTs to your services, no exploit
+verification. it needs no credentials and accepts none.
+
+the one exception — a weekly, opt-out PyPI version check — is its own
+section below.
+
+## verify it yourself
+
+don't trust this page. check:
+
+- `aicheck example.com --dry-run` prints every request it would send — no
+  sockets, no DNS. the plan you see is the whole plan.
+- `aicheck example.com --verbose` logs each connection actually dialed
+  (with the pinned IP) to stderr, 1:1 against the transport.
+- run it behind a logging proxy and watch every byte.
+- or read the source. the engine is dependency-light python (httpx +
+  pyyaml); the core is an afternoon's audit.
+
+## supply chain
+
+- every release is built and published by
+  [.github/workflows/publish-pypi.yml](https://github.com/unauthdev/aicheck-scan/blob/main/.github/workflows/publish-pypi.yml)
+  with SLSA provenance attestations on the `dist/*` artifacts (via
+  `actions/attest-build-provenance`). verify an artifact with
+  `gh attestation verify`.
+- publishing uses OIDC trusted publishing — there is no PyPI API token
+  anywhere, so there is no token to leak.
+- the build is reproducible: `pip install build && python -m build` on a
+  clean checkout.
+
+## the one network call beyond your target
+
+version check — landing in an upcoming release; today's CLI dials nothing
+but your target. once it ships: once per week, if online, the CLI checks
+PyPI's JSON API for a newer version; disable with `--no-version-check` or
+`AICHECK_NO_VERSION_CHECK=1`; it never goes anywhere else.
+
+## hash-pinned install
+
+for the paranoid path, pin by hash instead of trusting the index:
+
+```bash
+pip download aicheck-scan --no-deps -d /tmp/aicheck
+pip install --require-hashes aicheck-scan \
+  --hash sha256:<hash from the release notes>
+```
+
+the sha256 hashes of the sdist and wheel are published in the release
+notes for each version. combine with `gh attestation verify` for the full
+chain: source → build → artifact.
+
+## disclosure
+
+found something? see [SECURITY.md](../SECURITY.md).
