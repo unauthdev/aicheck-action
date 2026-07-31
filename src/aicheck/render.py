@@ -102,15 +102,16 @@ def _slug(product: str) -> str:
     return re.sub(r"\s+", "-", product.strip().lower())
 
 
-def deep_link(g: str, findings: list[dict]) -> str:
+def deep_link(g: str, findings: list[dict], source: str = "ci") -> str:
     """Playground deep link: grade, finding count, product names only —
-    never the target."""
+    never the target. `source` is the from= tag: "ci" for the action
+    summary, "cli" for the terminal door line."""
     services: list[str] = []
     for f in findings:
         s = _slug(f["product"])
         if s not in services:
             services.append(s)
-    url = f"{PLAYGROUND_URL}?from=ci&grade={g}&findings={len(findings)}"
+    url = f"{PLAYGROUND_URL}?from={source}&grade={g}&findings={len(findings)}"
     if services:
         url += "&services=" + ",".join(services)
     return url

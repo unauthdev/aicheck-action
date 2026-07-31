@@ -14,6 +14,11 @@ Trust-surface flags:
   --verbose   log every outbound connection to stderr as it happens, with the
               pinned IP actually dialed, plus a closing summary line.
 
+Text output ends with one door line: fix cards + a playground deep link on
+findings, the CI-action link when clean (grade/slugs only, never the target).
+After a successful scan it checks PyPI weekly for a newer version — disable
+with --no-version-check or AICHECK_NO_VERSION_CHECK=1.
+
 Exit codes: 0 = pass, 1 = grade at or worse than --fail-grade, 2 = target,
 usage, or engine error (an engine crash is never reported as a grade).
 """
@@ -29,7 +34,7 @@ import sys
 
 import httpx
 
-from . import __version__, recon, sarif, ssrf
+from . import __version__, recon, sarif, ssrf, versioncheck
 from .scoring import grade, run_checkers
 
 _BADNESS = {"A": 0, "C": 1, "D": 2, "F": 3}
@@ -76,6 +81,23 @@ async def scan(target: str, allow_private: bool = False,
     return grade(findings), [f.to_dict() for f in findings]
 
 
+CLEAN_DOOR = ("clean. keep it that way: the CI action watches every PR → "
+              "https://github.com/unauthdev/aicheck-scan")
+
+
+def _door_line(g: str, findings: list[dict]) -> str:
+    """The one line every text output ends with. Findings → first fix card +
+    the playground deep link; clean → the CI action. Grade, count and product
+    slugs only — never the target."""
+    if not findings:
+        return CLEAN_DOOR
+    # late import: aicheck.render imports render_text from this module
+    from .render import deep_link
+    return (f"fix cards: https://unauth.dev/fixes/{findings[0]['fix_card_id']} — "
+            f"see your stack the way the internet sees it: "
+            f"{deep_link(g, findings, source='cli')}")
+
+
 def render_text(target: str, g: str, findings: list[dict]) -> str:
     lines = [f"aicheck — {target} → grade {g} ({len(findings)} findings)"]
     for f in findings:
@@ -83,6 +105,7 @@ def render_text(target: str, g: str, findings: list[dict]) -> str:
         lines.append(f"           fix: https://unauth.dev/fixes/{f['fix_card_id']}")
     if not findings:
         lines.append("  clean — no exposed AI services found")
+    lines.append(_door_line(g, findings))
     return "\n".join(lines) + "\n"
 
 
@@ -105,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verbose", action="store_true",
                     help="log every outbound connection (with the pinned IP dialed) "
                          "to stderr as it happens")
+    ap.add_argument("--no-version-check", action="store_true",
+                    help="skip the weekly PyPI version check "
+                         "(also: AICHECK_NO_VERSION_CHECK=1)")
     ap.add_argument("--version", action="version",
                     version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
@@ -148,6 +174,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(sarif.to_sarif(args.target, g, findings), indent=2))
     else:
         print(render_text(args.target, g, findings), end="")
+    # weekly PyPI version check — after output, failure-invisible, off on
+    # --dry-run (returns above) and --version (exits in argparse)
+    versioncheck.check_for_update(disabled=args.no_version_check)
     return 1 if _BADNESS[g] >= _BADNESS[args.fail_grade] else 0
 
 
