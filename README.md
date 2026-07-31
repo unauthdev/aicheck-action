@@ -1,5 +1,10 @@
 # aicheck-action
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-aicheck-orange?logo=github)](https://github.com/marketplace/actions/aicheck)
+[![selftest](https://github.com/unauthdev/aicheck-action/actions/workflows/selftest.yml/badge.svg)](https://github.com/unauthdev/aicheck-action/actions/workflows/selftest.yml)
+[![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-action/pkgs/container/aicheck)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 **Fail the build if your PR ships an exposed self-hosted AI service.**
 
 A GitHub Action that live-probes the AI stack your job just started — Ollama,
@@ -46,6 +51,19 @@ jobs:
 
 The demo above fails: a default Ollama container is unauthenticated — that's
 the point. Fix it (the annotation links the fix card), watch it go green.
+
+What you get on the run page:
+
+> ## aicheck — grade F
+>
+> Your PR ships **2 exposed AI services** — anyone who can reach them can use them.
+>
+> | severity | service | finding | fix |
+> |---|---|---|---|
+> | CRITICAL | Ollama | API exposed without authentication | [fix card](https://unauth.dev/fixes/ollama-exposed) |
+> | HIGH | n8n | settings endpoint readable without authentication | [fix card](https://unauth.dev/fixes/n8n-exposed) |
+>
+> [See your stack the way the internet sees it →](https://unauth.dev/playground?from=ci&grade=F&findings=2&services=ollama,n8n)
 
 ## Inputs
 
