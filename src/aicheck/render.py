@@ -26,7 +26,7 @@ from .scan import render_text
 REDACTED_TARGET = "ci-scan-target"
 BASE_URL = "https://unauth.dev"
 PLAYGROUND_URL = f"{BASE_URL}/playground"
-ACTION_URL = "https://github.com/unauthdev/aicheck-action"
+ACTION_URL = "https://github.com/unauthdev/aicheck-scan"
 MAX_ROWS = 20
 
 # Privacy/scope disclaimer — also the pitch. Keep verbatim.

@@ -25,7 +25,7 @@ from aicheck.checks import ALL_CHECKERS
 from aicheck.checks.cvemap import all_entries
 
 BASE = "https://unauth.dev"
-UA = {"User-Agent": "aicheck-loop-qa/1.0 (+https://github.com/unauthdev/aicheck-action)"}
+UA = {"User-Agent": "aicheck-loop-qa/1.0 (+https://github.com/unauthdev/aicheck-scan)"}
 
 
 def card_ids() -> list[str]:

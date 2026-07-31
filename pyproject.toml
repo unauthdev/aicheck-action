@@ -29,8 +29,8 @@ aicheck = "aicheck.cli:main"
 
 [project.urls]
 Homepage = "https://unauth.dev"
-Source = "https://github.com/unauthdev/aicheck-action"
-Issues = "https://github.com/unauthdev/aicheck-action/issues"
+Source = "https://github.com/unauthdev/aicheck-scan"
+Issues = "https://github.com/unauthdev/aicheck-scan/issues"
 
 [tool.hatch.version]
 path = "src/aicheck/__init__.py"
