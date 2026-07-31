@@ -122,7 +122,7 @@ aicheck:
     TARGET: ollama            # the service alias — or localhost with a before_script install
   before_script:
     - pip install --quiet httpx pyyaml
-    - git clone --depth 1 --branch v1 https://github.com/unauthdev/aicheck-action.git /aicheck
+    - git clone --depth 1 --branch v1.0.3 https://github.com/unauthdev/aicheck-action.git /aicheck
   script:
     - cd /aicheck
     - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
