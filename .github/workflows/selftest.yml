@@ -105,3 +105,46 @@ jobs:
           python -m aicheck.scan localhost --allow-private --format json --fail-grade F \
             > /dev/null 2> stderr.log
           test ! -s stderr.log
+
+  render-matrix:
+    # covers the render/redact pipeline GitLab users run (the GitHub action
+    # path above can't see a redact regression — e.g. a target that equals a
+    # product slug corrupting check_id/fix_card_id)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install deps
+        run: python -m pip install --quiet httpx pyyaml
+
+      - name: redact unit tests
+        run: python tests/test_redact.py
+
+      - name: render all formats over synthetic artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in localhost ollama n8n 10.0.0.1; do
+            cat > artifact.json <<EOF
+          {"target": "$target", "grade": "F", "findings": [
+            {"check_id": "ollama", "product": "Ollama",
+             "title": "Ollama API exposed without authentication",
+             "severity": "CRITICAL", "url": "http://$target:11434/api/tags",
+             "evidence": "GET http://$target:11434/api/tags → 200",
+             "fix_card_id": "ollama-exposed", "details": {}}]}
+          EOF
+            for fmt in json text sarif summary; do
+              python -m aicheck.render artifact.json --format "$fmt" --redact > "out.$fmt"
+            done
+            python -c "import json; json.load(open('out.json')); json.load(open('out.sarif'))"
+            grep -q '"check_id": "ollama"' out.json
+            grep -q '"fix_card_id": "ollama-exposed"' out.json
+            # raw target survives nowhere in host context (check_id may
+            # legitimately equal the target string — that is the P4 case)
+            ! grep -q "http://$target" out.json out.sarif out.summary
+            ! grep -q "$target:11434" out.json out.sarif out.summary
+            grep -q "unauth.dev/fixes/ollama-exposed" out.summary
+          done
