@@ -157,7 +157,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for target in localhost ollama n8n 10.0.0.1; do
+          for target in localhost ollama n8n 10.0.0.1 target; do
             cat > artifact.json <<EOF
           {"target": "$target", "grade": "F", "findings": [
             {"check_id": "ollama", "product": "Ollama",
@@ -172,9 +172,9 @@ jobs:
             python -c "import json; json.load(open('out.json')); json.load(open('out.sarif'))"
             grep -q '"check_id": "ollama"' out.json
             grep -q '"fix_card_id": "ollama-exposed"' out.json
-            # raw target survives nowhere in host context (check_id may
-            # legitimately equal the target string — that is the P4 case)
+            # raw target survives nowhere in URL context. URL-anchored greps
+            # only: 'target' (the adversarial case) is a substring of the
+            # ci-scan-target placeholder, so bare-substring greps false-fail.
             ! grep -q "http://$target" out.json out.sarif out.summary
-            ! grep -q "$target:11434" out.json out.sarif out.summary
             grep -q "unauth.dev/fixes/ollama-exposed" out.summary
           done
