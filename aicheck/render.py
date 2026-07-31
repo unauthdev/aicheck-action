@@ -1,4 +1,4 @@
-"""Re-render a saved aicheck JSON artifact as json / sarif / text.
+"""Re-render a saved aicheck JSON artifact as json / sarif / text / summary.
 
 The action scans once (--format json) and derives every output from that one
 artifact — the probe pipeline never runs twice in a job:
@@ -6,10 +6,11 @@ artifact — the probe pipeline never runs twice in a job:
   python -m aicheck.scan "$TARGET" --allow-private --format json > aicheck.json
   python -m aicheck.render aicheck.json --format sarif > aicheck.sarif
   python -m aicheck.render aicheck.json --format text
+  python -m aicheck.render aicheck.json --format summary >> "$GITHUB_STEP_SUMMARY"
 
---redact scrubs the scan target (hostname/IP) from the output: CI artifacts
-carry grade, finding counts and product names only — never an internal
-hostname the user did not consent to publish.
+--redact scrubs the scan target (hostname/IP) from the output: CI artifacts,
+the job summary and the deep link carry grade, finding counts and product
+names only — never an internal hostname the user did not consent to publish.
 """
 
 from __future__ import annotations
@@ -23,6 +24,18 @@ from . import sarif
 from .scan import render_text
 
 REDACTED_TARGET = "ci-scan-target"
+BASE_URL = "https://unauth.dev"
+PLAYGROUND_URL = f"{BASE_URL}/playground"
+ACTION_URL = "https://github.com/unauthdev/aicheck-action"
+MAX_ROWS = 20
+
+# Privacy/scope disclaimer — also the pitch. Keep verbatim.
+FOOTER = (
+    "---\n"
+    f"[aicheck]({ACTION_URL}) by [unauth.dev]({BASE_URL}) · "
+    "grade A = clean · this scan probed only the services in this job — "
+    "your production firewall is invisible from CI"
+)
 
 
 def _url_host(url: str) -> str | None:
@@ -45,13 +58,64 @@ def redact(data: dict) -> dict:
     return json.loads(raw)
 
 
+def _slug(product: str) -> str:
+    return re.sub(r"\s+", "-", product.strip().lower())
+
+
+def deep_link(g: str, findings: list[dict]) -> str:
+    """Playground deep link: grade, finding count, product names only —
+    never the target."""
+    services: list[str] = []
+    for f in findings:
+        s = _slug(f["product"])
+        if s not in services:
+            services.append(s)
+    url = f"{PLAYGROUND_URL}?from=ci&grade={g}&findings={len(findings)}"
+    if services:
+        url += "&services=" + ",".join(services)
+    return url
+
+
+def render_summary(g: str, findings: list[dict]) -> str:
+    """Markdown for GITHUB_STEP_SUMMARY — the action's main output surface."""
+    lines: list[str] = []
+    if g == "A":
+        lines.append("## aicheck — grade A ✓ clean")
+        lines.append("")
+    else:
+        n = len(findings)
+        noun = "service" if n == 1 else "services"
+        pronoun = "it" if n == 1 else "them"
+        lines.append(f"## aicheck — grade {g}")
+        lines.append("")
+        lines.append(
+            f"Your PR ships **{n} exposed AI {noun}** — "
+            f"anyone who can reach {pronoun} can use {pronoun}.")
+        lines.append("")
+        lines.append("| severity | service | finding | fix |")
+        lines.append("|---|---|---|---|")
+        for f in findings[:MAX_ROWS]:
+            product = f["product"].replace("|", "\\|")
+            title = f["title"].replace("|", "\\|")
+            fix = f"{BASE_URL}/fixes/{f['fix_card_id']}"
+            lines.append(f"| {f['severity']} | {product} | {title} | [fix card]({fix}) |")
+        if n > MAX_ROWS:
+            lines.append("")
+            lines.append(f"…and {n - MAX_ROWS} more — full list in the code-scanning tab.")
+        lines.append("")
+    lines.append(f"[See your stack the way the internet sees it →]({deep_link(g, findings)})")
+    lines.append("")
+    lines.append(FOOTER)
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m aicheck.render",
         description="Re-render a saved aicheck JSON artifact (no re-scan).")
     ap.add_argument("artifact",
                     help="JSON written by python -m aicheck.scan --format json")
-    ap.add_argument("--format", choices=["json", "text", "sarif"],
+    ap.add_argument("--format", choices=["json", "text", "sarif", "summary"],
                     default="text")
     ap.add_argument("--redact", action="store_true",
                     help="scrub the scan target (hostname/IP) from the output")
@@ -73,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(data, indent=2))
     elif args.format == "sarif":
         print(json.dumps(sarif.to_sarif(target, g, findings), indent=2))
+    elif args.format == "summary":
+        print(render_summary(g, findings), end="")
     else:
         print(render_text(target, g, findings), end="")
     return 0
