@@ -36,5 +36,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
+          context: .
+          file: packaging/Dockerfile
           push: true
           tags: ${{ steps.img.outputs.tags }}

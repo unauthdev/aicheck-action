@@ -17,15 +17,12 @@ import json
 import re
 import sys
 import tempfile
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import httpx
 
-import httpx  # noqa: E402
-
-from aicheck import render  # noqa: E402
-from aicheck.checks import ALL_CHECKERS  # noqa: E402
-from aicheck.checks.cvemap import all_entries  # noqa: E402
+from aicheck import render
+from aicheck.checks import ALL_CHECKERS
+from aicheck.checks.cvemap import all_entries
 
 BASE = "https://unauth.dev"
 UA = {"User-Agent": "aicheck-loop-qa/1.0 (+https://github.com/unauthdev/aicheck-action)"}

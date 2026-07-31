@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: install deps
-        run: python -m pip install --quiet httpx pyyaml
+      - name: install aicheck
+        run: python -m pip install --quiet .
       - name: crawl every door URL
         run: python tests/loop_qa.py

@@ -39,7 +39,10 @@ def _rule(f: dict) -> dict:
     }
 
 
-def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.0") -> dict:
+def to_sarif(target: str, grade: str, findings: list[dict], version: str | None = None) -> dict:
+    if version is None:
+        from . import __version__  # local import: no circulars at module load
+        version = __version__
     rules = {}
     for f in findings:
         cid = f["check_id"]
