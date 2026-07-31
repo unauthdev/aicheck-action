@@ -162,6 +162,13 @@ Exit codes: `0` pass, `1` grade at or worse than `--fail-grade`, `2` target
 error. Without `--allow-private`, only public IPs/hostnames resolve (the CLI
 guards against scanning internal infrastructure by accident).
 
+Two flags expose the trust surface before and during a scan:
+
+```bash
+aicheck example.com --dry-run   # print every request it would send — no sockets, no DNS
+aicheck example.com --verbose   # log each dialed connection (with pinned IP) to stderr
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Fix cards and grading by
