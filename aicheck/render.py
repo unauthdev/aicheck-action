@@ -43,19 +43,59 @@ def _url_host(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+# Fields that never get redacted: identifiers and references, not hosts.
+_NEVER_REDACT_KEYS = {"check_id", "fix_card_id", "product", "cve",
+                      "reference_url"}
+
+
+def _redact_host_context(text: str, host: str) -> str:
+    """Replace `host` only in URL/host context — immediately followed by a
+    port (:11434) or a path (/api) — never as a bare substring, so a target
+    like 'ollama' can't corrupt check_id/fix_card_id ('ollama-exposed')."""
+    if not host:
+        return text
+    return re.sub(re.escape(host) + r"(?=:\d|/)", REDACTED_TARGET, text)
+
+
+def _redact_value(value, hosts: list[str]):
+    if isinstance(value, str):
+        for h in hosts:
+            value = _redact_host_context(value, h)
+        return value
+    if isinstance(value, list):
+        return [_redact_value(v, hosts) for v in value]
+    if isinstance(value, dict):
+        return {k: (v if k in _NEVER_REDACT_KEYS else _redact_value(v, hosts))
+                for k, v in value.items()}
+    return value
+
+
 def redact(data: dict) -> dict:
-    """Replace every occurrence of the scan target (raw or as it appears in
-    finding URLs) with a placeholder."""
-    targets = {str(data.get("target") or "")}
+    """Scrub the scan target structurally: data['target'], the host portion
+    of finding URLs, and host-context occurrences inside evidence/details
+    strings. check_id, fix_card_id, product and CVE references are never
+    touched — a target that equals a product slug must not corrupt them."""
+    host = str(data.get("target") or "")
+    url_hosts = {h for h in
+                 (_url_host(f.get("url", "")) for f in data.get("findings", []))
+                 if h}
+    hosts = sorted(({host} | url_hosts) - {""}, key=len, reverse=True)
+    findings = []
     for f in data.get("findings", []):
-        host = _url_host(f.get("url", ""))
-        if host:
-            targets.add(host)
-    raw = json.dumps(data)
-    for t in sorted(targets, key=len, reverse=True):
-        if t:
-            raw = raw.replace(t, REDACTED_TARGET)
-    return json.loads(raw)
+        f = dict(f)
+        url = f.get("url", "")
+        if _url_host(url):
+            # the host portion of a finding URL is always the scan target
+            f["url"] = re.sub(
+                r"^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/:]+",
+                r"\g<1>" + REDACTED_TARGET, url)
+        for key, value in f.items():
+            if key in _NEVER_REDACT_KEYS or key == "url":
+                continue
+            f[key] = _redact_value(value, hosts)
+        findings.append(f)
+    return {**data, "target": REDACTED_TARGET if host else data.get("target"),
+            "findings": findings}
 
 
 def _slug(product: str) -> str:
