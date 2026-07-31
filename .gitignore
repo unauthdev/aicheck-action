@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+out.json
+out.sarif
+out.summary
+out.text
+artifact.json

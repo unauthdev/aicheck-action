@@ -68,21 +68,24 @@ def check(target: str) -> None:
         link = f"https://unauth.dev/fixes/{f['fix_card_id']}"
         assert REDACTED_TARGET not in link, link
 
-    # the target is scrubbed from the fields that carried it
+    # the target is scrubbed from the fields that carried it (URL-anchored:
+    # a target literally named 'target' is a substring of the placeholder,
+    # so bare-substring asserts would false-fail)
     assert out["target"] == REDACTED_TARGET
     for f in out["findings"]:
         assert f["url"].startswith(f"http://{REDACTED_TARGET}:"), f["url"]
-        assert target not in f["url"], f["url"]
-        assert target not in f["evidence"], f["evidence"]
+        assert f"http://{target}" not in f["url"], f["url"]
+        assert f"http://{target}" not in f["evidence"], f["evidence"]
         assert REDACTED_TARGET in f["evidence"]
 
     # no host:port trace of the raw target anywhere in the artifact
-    assert f"{target}:11434" not in blob
-    assert f"{target}:5678" not in blob
+    assert f"http://{target}:11434" not in blob
+    assert f"http://{target}:5678" not in blob
 
 
 def main() -> int:
-    for target in ["ollama", "n8n", "10.0.0.1", "my-host.internal", "localhost"]:
+    for target in ["ollama", "n8n", "10.0.0.1", "my-host.internal",
+                   "localhost", "target"]:
         check(target)
         print(f"ok — target {target!r}")
     print("all redact tests passed")

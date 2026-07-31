@@ -1,0 +1,23 @@
+name: loop-qa
+
+# Nightly: every URL the action prints (fix cards, the playground deep
+# link) must resolve — a renamed fix card or a dead deep link is a broken
+# promise in thousands of CI logs. Catches the "links into the void" class.
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  link-crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install deps
+        run: python -m pip install --quiet httpx pyyaml
+      - name: crawl every door URL
+        run: python tests/loop_qa.py
