@@ -8,8 +8,8 @@ phone-home of any kind.
   python -m aicheck.scan localhost --allow-private
   python -m aicheck.scan example.com --format sarif --fail-grade C > results.sarif
 
-Exit codes: 0 = pass, 1 = grade at or worse than --fail-grade, 2 = target or
-usage error.
+Exit codes: 0 = pass, 1 = grade at or worse than --fail-grade, 2 = target,
+usage, or engine error (an engine crash is never reported as a grade).
 """
 
 from __future__ import annotations
@@ -98,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
             scan(args.target, allow_private=args.allow_private, services=services))
     except ssrf.TargetRejected as exc:
         print(f"target rejected: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # engine error — never report as a grade
+        print(f"aicheck engine error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
     if args.format == "json":
