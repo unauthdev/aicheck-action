@@ -26,6 +26,17 @@ It answers one question: **"did this PR ship an AI service with no auth?"**
 It does not prove internet reachability (your firewall/proxy is invisible
 from CI) — that's what post-deploy monitoring is for.
 
+## One engine, four doors
+
+| door | install / use | when |
+|---|---|---|
+| pip CLI | `pip install aicheck-scan` → `aicheck your-host` | check any machine, right now |
+| GitHub Action | `uses: unauthdev/aicheck-scan@v1` | every PR, in the build |
+| Docker | `docker run ghcr.io/unauthdev/aicheck:v1 your-host --allow-private` | GitLab, Bitbucket, Azure, Jenkins, bare CI |
+| site scanner | [unauth.dev](https://unauth.dev) | zero-install, from the internet's side |
+
+Same engine, same severity model, same grade — pick the door that fits.
+
 ## Usage
 
 ```yaml
