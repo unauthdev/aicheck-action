@@ -1,0 +1,107 @@
+name: selftest
+
+# Rot protection: run_checkers swallows checker exceptions by design, so a
+# broken checker fails silently at runtime. These jobs run the action against
+# real fixture containers and fail if any expected check_id goes missing or
+# any "checker ... error:" line appears in the scan log.
+# Fixture image tags are pinned — review bumps monthly (the schedule below,
+# same cadence as last_verified on the CVE map).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 3 * *"   # monthly, 3rd — fixture tag review reminder run
+  workflow_dispatch:
+
+jobs:
+  exposed-fixtures:
+    runs-on: ubuntu-latest
+    services:
+      ollama:
+        image: ollama/ollama:0.32.5
+        ports: ["11434:11434"]
+      n8n:
+        image: n8nio/n8n:1.123.67
+        ports: ["5678:5678"]
+      qdrant:
+        image: qdrant/qdrant:v1.15.4
+        ports: ["6333:6333"]
+      jupyter:
+        image: jupyter/base-notebook:x86_64-python-3.11.6
+        ports: ["8888:8888"]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The action itself: this must FAIL the step (default containers are
+      # unauthenticated — that is the point). Its job summary doubles as the
+      # living demo for the Marketplace page.
+      - name: aicheck (expected to fail the build)
+        id: exposed
+        uses: ./
+        continue-on-error: true
+        with:
+          target: localhost
+          fail-grade: F
+          upload-sarif: false
+
+      - name: assert grade, findings, and checker silence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.exposed.outcome }}" = "failure"
+          test "${{ steps.exposed.outputs.grade }}" = "F"
+
+          # CLI pass for greppable stderr and a direct exit-code check
+          python -m pip install --quiet httpx pyyaml
+          set +e
+          python -m aicheck.scan localhost --allow-private --format json --fail-grade F \
+            > cli.json 2> stderr.log
+          code=$?
+          set -e
+          test "$code" = "1"   # grade F at fail-grade F → exit 1
+
+          if grep -q "checker .* error:" stderr.log; then
+            echo "::error::silent checker failure detected:"
+            cat stderr.log
+            exit 1
+          fi
+
+          for id in ollama n8n qdrant jupyter; do
+            grep -q "\"check_id\": \"$id\"" cli.json \
+              || { echo "::error::expected check_id '$id' missing from findings"; exit 1; }
+          done
+
+          # privacy: the CI artifacts must never name the raw target
+          ! grep -q "localhost" aicheck.json
+          ! grep -q "localhost" aicheck.sarif
+
+  clean-fixture:
+    runs-on: ubuntu-latest
+    services:
+      nginx:   # answers on a probed port (80) but is not an AI service
+        image: nginx:1.27.4
+        ports: ["80:80"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: aicheck (expected to pass clean)
+        id: clean
+        uses: ./
+        with:
+          target: localhost
+          fail-grade: F
+          upload-sarif: false
+
+      - name: assert grade A and exit 0
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.clean.outcome }}" = "success"
+          test "${{ steps.clean.outputs.grade }}" = "A"
+
+          python -m pip install --quiet httpx pyyaml
+          python -m aicheck.scan localhost --allow-private --format json --fail-grade F \
+            > /dev/null 2> stderr.log
+          test ! -s stderr.log

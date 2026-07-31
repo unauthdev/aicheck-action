@@ -74,6 +74,56 @@ smoke-test the wiring on first install.
 - What it probes: well-known metadata endpoints only (version, tags,
   settings). No logins, no POSTs to your services, no exploit verification.
 
+## GitLab CI
+
+The engine is a plain CLI — GitLab support is config, not code. One scan,
+both renderings, pipeline fails on grade:
+
+```yaml
+aicheck:
+  image: python:3.11-slim
+  services:
+    - name: ollama/ollama:latest
+      alias: ollama
+  variables:
+    TARGET: ollama            # the service alias — or localhost with a before_script install
+  before_script:
+    - pip install --quiet httpx pyyaml
+    - git clone --depth 1 https://github.com/unauthdev/aicheck-action.git /aicheck
+  script:
+    - cd /aicheck
+    - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
+    - test -s "$CI_PROJECT_DIR/aicheck.json" && python -m aicheck.render "$CI_PROJECT_DIR/aicheck.json" --format sarif --redact > "$CI_PROJECT_DIR/aicheck.sarif" || true
+    - test -s "$CI_PROJECT_DIR/aicheck.json" && python -m aicheck.render "$CI_PROJECT_DIR/aicheck.json" --format text || true
+    - exit ${code:-0}
+  artifacts:
+    when: always
+    reports:
+      sarif: aicheck.sarif    # vulnerability report + MR security widget (GitLab Ultimate)
+    paths:
+      - aicheck.sarif
+    expire_in: 30 days
+```
+
+On Free/Premium the findings print in the job log and the pipeline still
+fails on grade — the SARIF dashboards (pipeline Security tab, vulnerability
+report, MR widget) need Ultimate.
+
+## Any CI with Docker
+
+Every platform that can run a container gets the one-line version:
+
+```yaml
+# gitlab, one-job version
+aicheck:
+  image: ghcr.io/unauthdev/aicheck:v1
+  script:
+    - python -m aicheck.scan "$TARGET" --allow-private --fail-grade F
+```
+
+The same image works on Bitbucket Pipelines, Azure DevOps, Jenkins, and bare
+CI runners.
+
 ## CLI
 
 The same engine runs standalone:
