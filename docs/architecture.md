@@ -26,6 +26,9 @@ Contracts that are load-bearing across every door:
 - **Stable IDs**: `check_id` and `fix_card_id` are the internal API —
   SARIF rules, fix-card URLs and CI greps all key on them. Never rename
   one without a migration plan.
+- **Trust surface**: `--dry-run` prints the full request plan (sorted, no
+  DNS, no sockets, exit 0); `--verbose` logs every dialed connection with
+  its pinned IP to stderr, then a summary line.
 
 ## The four doors
 

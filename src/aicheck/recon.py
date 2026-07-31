@@ -7,6 +7,7 @@ exploit verification, no model pulls. Bodies are capped at 64 KB.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 import httpx
 
@@ -89,6 +90,20 @@ def fact_key(port: int, path: str) -> str:
     return f"{port}:{path}"
 
 
+# A connection log entry: (method, logical URL, address actually dialed).
+ConnectLog = Callable[[str, str, str], None]
+
+
+def probe_plan() -> list[tuple[int, str]]:
+    """The full (port, path) request list a scan sends: PROBES plus a :443
+    alias of every API path (real-world deployments often sit behind TLS
+    reverse proxies on 443 instead of their product-default port — leakix/
+    Shodan confirm much of the exposed Ollama population answers there).
+    Single source of truth for gather_facts and --dry-run."""
+    extra = [(443, path) for (port, path) in PROBES if port not in (80, 443) and path != "/"]
+    return PROBES + extra
+
+
 _REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
 
@@ -105,7 +120,8 @@ def _connect_kwargs(target: str, ip: str | None, scheme: str, port: int) -> dict
 
 
 async def _fetch(
-    client: httpx.AsyncClient, target: str, ip: str | None, port: int, path: str
+    client: httpx.AsyncClient, target: str, ip: str | None, port: int, path: str,
+    log: ConnectLog | None = None,
 ) -> tuple[str, ProbeResult]:
     """One probe, following up to 3 redirects. Anti-rebinding/proxy rules:
     redirects are only followed when they stay on the SAME host as the
@@ -120,6 +136,8 @@ async def _fetch(
         host = ip or target
         url = f"{scheme}://{host}:{cur_port}{cur_path}"
         logical_url = f"{scheme}://{target}:{cur_port}{cur_path}"
+        if log is not None:
+            log("GET", logical_url, host)
         resp = await client.get(
             url, follow_redirects=False, **_connect_kwargs(target, ip, scheme, cur_port)
         )
@@ -157,6 +175,7 @@ async def _probe(
     port: int,
     path: str,
     pinned_ips: list[str] | None = None,
+    log: ConnectLog | None = None,
 ) -> tuple[str, ProbeResult]:
     key = fact_key(port, path)
     start_url = f"{'https' if port == 443 else 'http'}://{target}:{port}{path}"
@@ -166,7 +185,7 @@ async def _probe(
         last_exc: httpx.HTTPError | None = None
         for ip in (pinned_ips or [None]):
             try:
-                return key, await _fetch(client, target, ip, port, path)
+                return key, await _fetch(client, target, ip, port, path, log)
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
                 last_exc = exc
             except httpx.HTTPError as exc:
@@ -180,6 +199,7 @@ async def gather_facts(
     target: str,
     transport: httpx.AsyncBaseTransport | None = None,
     pinned_ips: list[str] | None = None,
+    log: ConnectLog | None = None,
 ) -> dict[str, ProbeResult]:
     """Run all candidate probes concurrently, bounded by GATHER_BUDGET_S.
     On budget expiry, unfinished probes are recorded as absent and we return
@@ -187,7 +207,10 @@ async def gather_facts(
 
     `pinned_ips` are the addresses validated by ssrf.validate_target; when
     given, every connection dials those IPs (never a fresh DNS answer), so a
-    rebind between validation and connect goes nowhere."""
+    rebind between validation and connect goes nowhere.
+
+    `log`, when given, is called as log(method, logical_url, dialed_address)
+    just before every outbound request — the --verbose connection log."""
     sem = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient(
         transport=transport,
@@ -196,14 +219,9 @@ async def gather_facts(
         verify=False,  # tolerate self-signed certs if a probe redirects to https
         headers={"User-Agent": USER_AGENT},
     ) as client:
-        # Real-world deployments often sit behind TLS reverse proxies on 443
-        # instead of their product-default port (leakix/Shodan confirm: much of
-        # the exposed Ollama population answers on 443). Probe API paths there
-        # too and alias good hits back to the product's canonical key.
-        extra = [(443, path) for (port, path) in PROBES if port not in (80, 443) and path != "/"]
         tasks = {
-            asyncio.ensure_future(_probe(client, sem, target, p, path, pinned_ips)): (p, path)
-            for p, path in PROBES + extra
+            asyncio.ensure_future(_probe(client, sem, target, p, path, pinned_ips, log)): (p, path)
+            for p, path in probe_plan()
         }
         done, pending = await asyncio.wait(tasks, timeout=GATHER_BUDGET_S)
         for t in pending:
@@ -213,6 +231,8 @@ async def gather_facts(
         for t in pending:
             p, path = tasks[t]
             out[fact_key(p, path)] = ProbeResult(url=f"http://{target}:{p}{path}", status_code=None, error="BudgetExceeded")
+        # Alias good :443 hits (reverse-proxied deployments) back to the
+        # product's canonical key.
         for port, path in PROBES:
             if port in (80, 443) or path == "/":
                 continue
