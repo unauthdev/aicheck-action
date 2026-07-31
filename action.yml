@@ -75,6 +75,16 @@ runs:
       with:
         sarif_file: aicheck.sarif
 
+    - name: Job summary
+      if: always() && steps.scan.outputs.exit_code != '2'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if [ -s "$GITHUB_WORKSPACE/aicheck.json" ]; then
+          python -m aicheck.render "$GITHUB_WORKSPACE/aicheck.json" --format summary \
+            >> "$GITHUB_STEP_SUMMARY"
+        fi
+
     - name: Enforce fail-grade
       shell: bash
       env:
