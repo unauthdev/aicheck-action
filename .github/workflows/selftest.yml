@@ -54,7 +54,7 @@ jobs:
           test "${{ steps.exposed.outputs.grade }}" = "F"
 
           # CLI pass for greppable stderr and a direct exit-code check
-          python -m pip install --quiet httpx pyyaml
+          python -m pip install --quiet .
           set +e
           python -m aicheck.scan localhost --allow-private --format json --fail-grade F \
             > cli.json 2> stderr.log
@@ -101,7 +101,7 @@ jobs:
           test "${{ steps.clean.outcome }}" = "success"
           test "${{ steps.clean.outputs.grade }}" = "A"
 
-          python -m pip install --quiet httpx pyyaml
+          python -m pip install --quiet .
           python -m aicheck.scan localhost --allow-private --format json --fail-grade F \
             > /dev/null 2> stderr.log
           test ! -s stderr.log
@@ -147,8 +147,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: install deps
-        run: python -m pip install --quiet httpx pyyaml
+      - name: install aicheck
+        run: python -m pip install --quiet .
 
       - name: redact unit tests
         run: python tests/test_redact.py
