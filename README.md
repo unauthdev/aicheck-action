@@ -5,9 +5,9 @@
 A GitHub Action that live-probes the AI stack your job just started — Ollama,
 n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant, AnythingLLM,
 Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, MCP servers — grades it
-A–F, annotates the PR via SARIF, and links every finding to a plain-English
-fix card. From [unauth.dev](https://unauth.dev), the free AI-stack exposure
-checker.
+A–F, and reports the results in the run summary and code scanning, each
+linking a plain-English fix card. From [unauth.dev](https://unauth.dev), the
+free AI-stack exposure checker.
 
 ## Why live probing
 
