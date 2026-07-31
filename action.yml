@@ -34,7 +34,8 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-        cache: pip
+        # no cache: pip — setup-python fails hard when the CALLING repo has
+        # no dependency file, and we can't know the consumer's layout
 
     - name: Install aicheck
       shell: bash
