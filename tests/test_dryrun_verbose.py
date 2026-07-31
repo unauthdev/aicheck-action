@@ -113,7 +113,8 @@ def test_dry_run_unguarded_target() -> None:
 def test_verbose_logs_every_connection() -> None:
     recorded: list = []
     code, _out, err = _run_main_with_transport(
-        ["127.0.0.2", "--allow-private", "--verbose"], _mock_transport(recorded))
+        ["127.0.0.2", "--allow-private", "--verbose", "--no-version-check"],
+        _mock_transport(recorded))
     assert code in (0, 1), code
     lines = err.splitlines()
     get_lines = [l for l in lines if l.startswith("→ GET ")]
@@ -172,7 +173,8 @@ def test_verbose_log_shows_host_url_and_pinned_ip() -> None:
 def test_silent_by_default() -> None:
     recorded: list = []
     code, _out, err = _run_main_with_transport(
-        ["127.0.0.2", "--allow-private"], _mock_transport(recorded))
+        ["127.0.0.2", "--allow-private", "--no-version-check"],
+        _mock_transport(recorded))
     assert code in (0, 1), code
     assert len(recorded) == len(recon.probe_plan())  # the scan did probe
     assert "→ GET" not in err
