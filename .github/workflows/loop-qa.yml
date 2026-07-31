@@ -1,12 +1,19 @@
 name: loop-qa
 
-# Nightly: every URL the action prints (fix cards, the playground deep
-# link) must resolve — a renamed fix card or a dead deep link is a broken
-# promise in thousands of CI logs. Catches the "links into the void" class.
+# Loop integrity (nightly + release): the loop can't silently break.
+# 1. link crawl — every door URL the action/CLI prints must resolve
+# 2. grade coherence — one fixture stack, identical grade from the pip/action
+#    engine and the site engine (checkouts of both repos)
+# 3. id drift — covered by the crawl (fix_card_ids resolve) + redact tests
+# 4. privacy — the redact unit suite (no target leaks in artifacts)
+# The site's own Playwright harness (qa.yml there + prod-watch nightly)
+# covers suite 5 — no duplication here.
 
 on:
   schedule:
     - cron: "41 3 * * *"
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -17,7 +24,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: install aicheck
+      - name: install deps
         run: python -m pip install --quiet .
       - name: crawl every door URL
         run: python tests/loop_qa.py
+
+  grade-coherence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: action
+      - uses: actions/checkout@v4
+        with:
+          repository: unauthdev/aicheck
+          path: site
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install deps
+        run: python -m pip install --quiet httpx pyyaml
+      - name: both engines, one fixture, identical grade
+        run: |
+          set -euo pipefail
+          PYTHONPATH=action/src python action/tests/grade_coherence.py > /tmp/a.json
+          PYTHONPATH=site python action/tests/grade_coherence.py > /tmp/s.json
+          diff /tmp/a.json /tmp/s.json
+          grep -q '"grade": "F"' /tmp/a.json
+
+  privacy-redact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install deps
+        run: python -m pip install --quiet .
+      - name: redact suite
+        run: python tests/test_redact.py
