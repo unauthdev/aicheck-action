@@ -10,11 +10,8 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from aicheck.render import REDACTED_TARGET, redact  # noqa: E402
+from aicheck.render import REDACTED_TARGET, redact
 
 
 def make_artifact(target: str) -> dict:
