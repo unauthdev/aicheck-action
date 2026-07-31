@@ -106,6 +106,36 @@ jobs:
             > /dev/null 2> stderr.log
           test ! -s stderr.log
 
+  sarif-upload:
+    # exercises the codeql-action/upload-sarif path for real (the other jobs
+    # run upload-sarif: false) so an upload-sarif version bump can't silently
+    # break users; clean fixture -> step must succeed including the upload
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    services:
+      nginx:
+        image: nginx:1.27.4
+        ports: ["80:80"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: aicheck with SARIF upload enabled
+        id: up
+        uses: ./
+        with:
+          target: localhost
+          fail-grade: F
+          upload-sarif: true
+
+      - name: assert the upload path succeeded
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.up.outcome }}" = "success"
+          test "${{ steps.up.outputs.grade }}" = "A"
+          test -s aicheck.sarif
+
   render-matrix:
     # covers the render/redact pipeline GitLab users run (the GitHub action
     # path above can't see a redact regression — e.g. a target that equals a
