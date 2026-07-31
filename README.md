@@ -53,6 +53,9 @@ the point. Fix it (the annotation links the fix card), watch it go green.
 |---|---|---|
 | `target` | *(required)* | Host to probe. No port — well-known AI-service ports are probed. |
 | `fail-grade` | `F` | Fail if the grade is this or worse. `F` = only critical exposure fails; `C` = anything above clean fails. |
+
+Note: `fail-grade: A` fails the build even on a clean scan; it exists to
+smoke-test the wiring on first install.
 | `services` | *(all 17)* | Comma-separated product filter, e.g. `ollama,n8n`. |
 | `upload-sarif` | `true` | Upload results to code scanning. Set `false` to skip (no `security-events` permission needed then). |
 

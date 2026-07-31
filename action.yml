@@ -39,7 +39,7 @@ runs:
       shell: bash
       run: python -m pip install --quiet httpx pyyaml
 
-    - name: Run aicheck (SARIF)
+    - name: Run aicheck (once)
       id: scan
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -48,28 +48,29 @@ runs:
         SERVICES: ${{ inputs.services }}
         FAIL_GRADE: ${{ inputs.fail-grade }}
       run: |
-        python -m aicheck.scan "$TARGET" --allow-private --format sarif \
+        # One probe pass; every output is rendered from the same JSON artifact.
+        # The raw artifact (which names the target) stays in $RUNNER_TEMP —
+        # workspace artifacts are redacted: grade, counts and product names only.
+        python -m aicheck.scan "$TARGET" --allow-private --format json \
           ${SERVICES:+--services "$SERVICES"} --fail-grade "$FAIL_GRADE" \
-          > "$GITHUB_WORKSPACE/aicheck.sarif" && code=0 || code=$?
+          > "$RUNNER_TEMP/aicheck-raw.json" && code=0 || code=$?
         echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-        if [ -s "$GITHUB_WORKSPACE/aicheck.sarif" ]; then
-          grade=$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/aicheck.sarif'))['runs'][0]['properties']['grade'])")
+        if [ -s "$RUNNER_TEMP/aicheck-raw.json" ]; then
+          python -m aicheck.render "$RUNNER_TEMP/aicheck-raw.json" --format json --redact \
+            > "$GITHUB_WORKSPACE/aicheck.json"
+          grade=$(python -c "import json;print(json.load(open('$GITHUB_WORKSPACE/aicheck.json'))['grade'])")
           echo "grade=$grade" >> "$GITHUB_OUTPUT"
+          python -m aicheck.render "$GITHUB_WORKSPACE/aicheck.json" --format sarif \
+            > "$GITHUB_WORKSPACE/aicheck.sarif"
+          python -m aicheck.render "$GITHUB_WORKSPACE/aicheck.json" --format text
+        fi
+        if [ -s "$GITHUB_WORKSPACE/aicheck.sarif" ]; then
+          echo "has_sarif=true" >> "$GITHUB_OUTPUT"
         fi
         exit 0
 
-    - name: Scan log (human-readable)
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        TARGET: ${{ inputs.target }}
-        SERVICES: ${{ inputs.services }}
-      run: |
-        python -m aicheck.scan "$TARGET" --allow-private \
-          ${SERVICES:+--services "$SERVICES"} || true
-
     - name: Upload SARIF to code scanning
-      if: inputs.upload-sarif == 'true' && steps.scan.outputs.exit_code != '2'
+      if: inputs.upload-sarif == 'true' && steps.scan.outputs.has_sarif == 'true'
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: aicheck.sarif
@@ -85,6 +86,6 @@ runs:
           exit 1
         fi
         if [ "$EXIT_CODE" != "0" ]; then
-          echo "::error::aicheck failed to run (exit $EXIT_CODE)."
+          echo "::error::aicheck could not complete the scan (exit $EXIT_CODE) — this is an engine error, not an exposure finding."
           exit 1
         fi
