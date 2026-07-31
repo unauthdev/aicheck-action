@@ -1,8 +1,8 @@
-# aicheck-action
+# aicheck
 
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-aicheck-orange?logo=github)](https://github.com/marketplace/actions/aicheck)
-[![selftest](https://github.com/unauthdev/aicheck-action/actions/workflows/selftest.yml/badge.svg)](https://github.com/unauthdev/aicheck-action/actions/workflows/selftest.yml)
-[![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-action/pkgs/container/aicheck)
+[![selftest](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml/badge.svg)](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml)
+[![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-scan/pkgs/container/aicheck)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **Fail the build if your PR ships an exposed self-hosted AI service.**
@@ -43,7 +43,7 @@ jobs:
         image: ollama/ollama:latest
         ports: ["11434:11434"]
     steps:
-      - uses: unauthdev/aicheck-action@v1
+      - uses: unauthdev/aicheck-scan@v1
         with:
           target: localhost
           fail-grade: C      # D or F fails the build
@@ -82,6 +82,33 @@ smoke-test the wiring on first install.
 | Output | Meaning |
 |---|---|
 | `grade` | `A` (clean), `C`, `D`, or `F` (critical exposure). |
+
+## Install (local CLI)
+
+```bash
+pip install aicheck-scan
+aicheck example.com
+```
+
+the package installs the `aicheck` console command — same engine the action
+and the Docker image run.
+
+the paranoid path — pin by hash, don't trust the index:
+
+```bash
+pip download aicheck-scan --no-deps -d /tmp/aicheck
+pip install --require-hashes aicheck-scan \
+  --hash sha256:<hash from the release notes>
+```
+
+hashes are in the release notes for each version. details and verification:
+[docs/trust.md](docs/trust.md).
+
+## Auditability
+
+the engine is dependency-light Python (httpx + pyyaml). don't trust us: run
+`--dry-run`, run it behind a proxy, or read it — the core is an afternoon's
+audit. full trust page: [docs/trust.md](docs/trust.md).
 
 ## Privacy / supply chain
 
@@ -122,7 +149,7 @@ aicheck:
     TARGET: ollama            # the service alias — or localhost with a before_script install
   before_script:
     - pip install --quiet httpx pyyaml
-    - git clone --depth 1 --branch v1.0.3 https://github.com/unauthdev/aicheck-action.git /aicheck
+    - git clone --depth 1 --branch v1.0.3 https://github.com/unauthdev/aicheck-scan.git /aicheck
   script:
     - cd /aicheck
     - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
@@ -150,12 +177,13 @@ container.
 
 ## CLI
 
-The same engine runs standalone:
+The same engine runs standalone — install it from PyPI (see
+[Install](#install-local-cli) above):
 
 ```bash
-pip install httpx pyyaml
-python -m aicheck.scan localhost --allow-private
-python -m aicheck.scan example.com --format sarif --fail-grade C
+pip install aicheck-scan
+aicheck localhost --allow-private
+aicheck example.com --format sarif --fail-grade C
 ```
 
 Exit codes: `0` pass, `1` grade at or worse than `--fail-grade`, `2` target
@@ -173,4 +201,4 @@ aicheck example.com --verbose   # log each dialed connection (with pinned IP) to
 
 MIT — see [LICENSE](LICENSE). Fix cards and grading by
 [unauth.dev](https://unauth.dev); findings link to the public fix library at
-`unauth.dev/fixes/`.
+`unauth.dev/fixes/`. Security reports: [SECURITY.md](SECURITY.md).
