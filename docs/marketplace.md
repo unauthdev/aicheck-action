@@ -24,9 +24,13 @@ check the Marketplace box or accept the Developer Agreement.
 
 Listing URL (after success):
 
-https://github.com/marketplace/actions/aicheck
+https://github.com/marketplace/actions/aicheck-scan
 
 Update README Marketplace badge to that URL once it returns 200.
+
+Note: Marketplace `name` must be unique and ≤125-char `description`. The
+CLI command stays `aicheck`; only the Marketplace listing name is
+`aicheck-scan` (repo name; avoids collision with GitHub user `AIcheck`).
 
 ## After listing
 
