@@ -37,6 +37,7 @@ CLI command stays `aicheck`; only the Marketplace listing name is
 - Prefer `uses: unauthdev/aicheck-scan@v1` in all docs (floating major).
 - Do not invent a `badge?target=` endpoint — badges only from CI/SARIF artifacts.
 - Adoption metric (roadmap E1): ≥10 public repos using the Action.
+- PyPI CLI publish (`pip install aicheck-scan`) is separate — see [`docs/pypi.md`](pypi.md).
 
 ## One-click path for consumers (no Marketplace required)
 
