@@ -80,11 +80,25 @@ PROBES: list[tuple[int, str]] = [
     (8080, "/v1/meta"),
     (8080, "/v1/schema"),
     # MCP servers (no standard port — probe the common ones + 443 via alias)
-    (3000, "/sse"), (3000, "/mcp/sse"), (3000, "/mcp"),
+    (3000, "/sse"), (3000, "/mcp/sse"), (3000, "/mcp"), (3000, "/mcp/"),
     (3001, "/sse"), (3001, "/mcp/sse"), (3001, "/mcp"),
     (5000, "/sse"), (5000, "/mcp/sse"), (5000, "/mcp"),
     (8000, "/sse"), (8000, "/mcp/sse"), (8000, "/mcp"),
-    (8080, "/sse"), (8080, "/mcp/sse"), (8080, "/mcp"),
+    (8080, "/sse"), (8080, "/mcp/sse"), (8080, "/mcp"), (8080, "/mcp/"),
+    # MCP discovery (SEP / IETF-style well-known cards — GET only)
+    (3000, "/.well-known/mcp"), (3000, "/.well-known/mcp.json"),
+    (3000, "/.well-known/mcp/server-card.json"), (3000, "/.well-known/mcp-server"),
+    (3001, "/.well-known/mcp"), (3001, "/.well-known/mcp.json"),
+    (3001, "/.well-known/mcp/server-card.json"),
+    (5000, "/.well-known/mcp"), (5000, "/.well-known/mcp.json"),
+    (5000, "/.well-known/mcp/server-card.json"),
+    (8000, "/.well-known/mcp"), (8000, "/.well-known/mcp.json"),
+    (8000, "/.well-known/mcp/server-card.json"),
+    (8080, "/.well-known/mcp"), (8080, "/.well-known/mcp.json"),
+    (8080, "/.well-known/mcp/server-card.json"), (8080, "/.well-known/mcp-server"),
+    # MCP SSE session surface (AIG / nuclei GET fingerprint)
+    (3000, "/messages/"), (3001, "/messages/"), (5000, "/messages/"),
+    (8000, "/messages/"), (8080, "/messages/"),
 ]
 
 
