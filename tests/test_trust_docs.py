@@ -64,9 +64,9 @@ def test_readme_links_trust_docs() -> None:
     assert "docs/marketplace.md" in text, "README does not link docs/marketplace.md"
     assert (ROOT / "examples" / "github-action.yml").is_file()
     assert (ROOT / "docs" / "marketplace.md").is_file()
-    # Do not claim a live Marketplace URL until the listing returns 200
-    assert "marketplace/actions/aicheck-scan)" not in text.replace(
-        "docs/marketplace.md", ""), "README links a Marketplace URL that may 404"
+    # Listing is live — README may (and should) deep-link the Marketplace page
+    assert "marketplace/actions/aicheck-scan" in text, (
+        "README should link the live Marketplace listing")
 
 
 def test_version_single_sourced() -> None:

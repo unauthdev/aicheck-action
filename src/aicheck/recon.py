@@ -79,6 +79,11 @@ PROBES: list[tuple[int, str]] = [
     # Weaviate (shares :8080 with Open WebUI — content decides)
     (8080, "/v1/meta"),
     (8080, "/v1/schema"),
+    # RedisInsight (default :5540, older :8001) + Redis Commander (:8081)
+    # — HTTP consoles only; raw Redis RESP :6379 is out of scope
+    (5540, "/"), (5540, "/api/health"), (5540, "/api/health/"), (5540, "/api/databases"),
+    (8001, "/"), (8001, "/api/health"), (8001, "/api/health/"), (8001, "/api/databases"),
+    (8081, "/"), (8082, "/"),
     # MCP servers (no standard port — probe the common ones + 443 via alias)
     (3000, "/sse"), (3000, "/mcp/sse"), (3000, "/mcp"), (3000, "/mcp/"),
     (3001, "/sse"), (3001, "/mcp/sse"), (3001, "/mcp"),

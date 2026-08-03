@@ -15,11 +15,12 @@ from . import (
     openwebui,
     qdrant,
     ray,
+    redis,
     vllm,
     weaviate,
 )
 
 ALL_CHECKERS = [
     ollama, n8n, openwebui, vllm, langfuse, comfyui, ray, dify, qdrant,
-    anythingllm, jupyter, gradio_langflow, flowise, chroma, weaviate, mcp,
+    anythingllm, jupyter, gradio_langflow, flowise, chroma, weaviate, mcp, redis,
 ]
