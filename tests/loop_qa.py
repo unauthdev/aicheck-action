@@ -34,6 +34,8 @@ def card_ids() -> list[str]:
         cid = getattr(checker, "FIX_CARD_ID", None)
         if cid:
             ids.add(cid)
+        for extra in getattr(checker, "FIX_CARD_IDS", ()) or ():
+            ids.add(extra)
     for entry in all_entries():
         ids.add(str(entry["cve"]).lower())  # cve-2026-21858 style card ids
     return sorted(ids)

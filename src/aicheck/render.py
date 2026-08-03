@@ -147,12 +147,22 @@ def deep_link(g: str, findings: list[dict], source: str = "ci") -> str:
     return url
 
 
-def render_summary(g: str, findings: list[dict]) -> str:
+def render_summary(g: str, findings: list[dict],
+                   services_filter: list[str] | None = None) -> str:
     """Markdown for GITHUB_STEP_SUMMARY — the action's main output surface."""
     lines: list[str] = []
     if g == "A":
-        lines.append("## aicheck — grade A ✓ clean")
-        lines.append("")
+        if services_filter:
+            filt = ", ".join(services_filter)
+            lines.append(f"## aicheck — grade A ✓ (filtered: {filt})")
+            lines.append("")
+            lines.append(
+                f"No findings in `{filt}`. Other products were not included "
+                "in this grade — do not read this as a clean estate.")
+            lines.append("")
+        else:
+            lines.append("## aicheck — grade A ✓ clean")
+            lines.append("")
     else:
         n = len(findings)
         noun = "service" if n == 1 else "services"
@@ -209,9 +219,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.format == "sarif":
         print(json.dumps(sarif.to_sarif(target, g, findings), indent=2))
     elif args.format == "summary":
-        print(render_summary(g, findings), end="")
+        print(render_summary(
+            g, findings, services_filter=data.get("services_filter")), end="")
     else:
-        print(render_text(target, g, findings), end="")
+        print(render_text(
+            target, g, findings, services_filter=data.get("services_filter")),
+            end="")
     return 0
 
 

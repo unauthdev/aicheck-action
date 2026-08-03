@@ -16,6 +16,9 @@ from ..models import Finding, ProbeResult
 from .cvemap import cve_findings
 
 CHECK_ID = "gradio-langflow"
+# Both cards this module can emit — loop_qa crawls FIX_CARD_ID* attributes.
+FIX_CARD_ID = "gradio-exposed"
+FIX_CARD_IDS = ("gradio-exposed", "langflow-exposed")
 
 _VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+)?")
 

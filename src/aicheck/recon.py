@@ -7,6 +7,7 @@ exploit verification, no model pulls. Bodies are capped at 64 KB.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 from collections.abc import Callable
 
 import httpx
@@ -74,6 +75,7 @@ PROBES: list[tuple[int, str]] = [
     (8000, "/api/v1/heartbeat"),
     (8000, "/api/v2/heartbeat"),
     (8000, "/api/v1/collections"),
+    (8000, "/api/v2/collections"),
     # Weaviate (shares :8080 with Open WebUI — content decides)
     (8080, "/v1/meta"),
     (8080, "/v1/schema"),
@@ -119,6 +121,16 @@ def _connect_kwargs(target: str, ip: str | None, scheme: str, port: int) -> dict
     return kwargs
 
 
+def _url_host(host: str) -> str:
+    """Bracket IPv6 literals so httpx accepts scheme://[v6]:port/path."""
+    try:
+        if isinstance(ipaddress.ip_address(host), ipaddress.IPv6Address):
+            return f"[{host}]"
+    except ValueError:
+        pass
+    return host
+
+
 async def _fetch(
     client: httpx.AsyncClient, target: str, ip: str | None, port: int, path: str,
     log: ConnectLog | None = None,
@@ -134,7 +146,7 @@ async def _fetch(
     cur_port, cur_path = port, path
     for _hop in range(3):
         host = ip or target
-        url = f"{scheme}://{host}:{cur_port}{cur_path}"
+        url = f"{scheme}://{_url_host(host)}:{cur_port}{cur_path}"
         logical_url = f"{scheme}://{target}:{cur_port}{cur_path}"
         if log is not None:
             log("GET", logical_url, host)
@@ -182,11 +194,15 @@ async def _probe(
     async with sem:
         # Try each validated IP in turn; only connection-level failures move
         # to the next address (one black-holed IP must not sink the probe).
-        last_exc: httpx.HTTPError | None = None
+        last_exc: BaseException | None = None
         for ip in (pinned_ips or [None]):
             try:
                 return key, await _fetch(client, target, ip, port, path, log)
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                last_exc = exc
+            except httpx.InvalidURL as exc:
+                # Unbracketed IPv6 (or other bad URL) must not silently drop
+                # the probe task — try the next pinned address.
                 last_exc = exc
             except httpx.HTTPError as exc:
                 return key, ProbeResult(url=start_url, status_code=None, error=type(exc).__name__)

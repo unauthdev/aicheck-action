@@ -10,7 +10,7 @@ Fingerprint (GET-only, no JSON-RPC initialize):
 - GET /mcp → 200/4xx with a JSON-RPC-shaped body, or MCP-ish server header
 - GET /.well-known/mcp or /healthz naming MCP
 Port-agnostic: MCP has no standard port, so we probe the common ones
-(3000, 8000, 8080) plus TLS on 443 via the shared alias layer.
+(3000, 3001, 5000, 8000, 8080) plus TLS on 443 via the shared alias layer.
 """
 
 from __future__ import annotations

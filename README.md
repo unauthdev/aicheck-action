@@ -152,9 +152,10 @@ audit. full trust page: [docs/trust.md](docs/trust.md).
 
 ## Privacy / supply chain
 
-- **Runs entirely on your runner.** The only network traffic is read-only
-  GETs to *your* target. Nothing is sent to unauth.dev or anywhere else —
-  no telemetry, no phone-home, by design.
+- **Runs entirely on your runner.** Probe traffic is read-only GETs to *your*
+  target. The only other dial is an optional weekly PyPI version check
+  (opt out: `--no-version-check` / `AICHECK_NO_VERSION_CHECK=1`) — see
+  [docs/trust.md](docs/trust.md). No telemetry to unauth.dev.
 - No credentials needed. No Docker socket. No privileged mode.
 - What it probes: well-known metadata endpoints only (version, tags,
   settings). No logins, no POSTs to your services, no exploit verification.
@@ -189,7 +190,7 @@ aicheck:
     TARGET: ollama            # the service alias — or localhost with a before_script install
   before_script:
     - pip install --quiet httpx pyyaml
-    - git clone --depth 1 --branch v1.0.3 https://github.com/unauthdev/aicheck-scan.git /aicheck
+    - git clone --depth 1 --branch v1.1.4 https://github.com/unauthdev/aicheck-scan.git /aicheck
   script:
     - cd /aicheck
     - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
