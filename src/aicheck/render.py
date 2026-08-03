@@ -102,13 +102,32 @@ def _slug(product: str) -> str:
     return re.sub(r"\s+", "-", product.strip().lower())
 
 
+# Scanner product → playground block id (must match playground.js CI_SLUGS).
+PLAYGROUND_SERVICE_IDS = {
+    "mcp-server": "mcp",
+    "mcp-servers": "mcp",
+    "open-webui": "openwebui",
+    "crewai-studio": "crewai",
+    "anything-llm": "anythingllm",
+    "v-llm": "vllm",
+    "lang-fuse": "langfuse",
+    "open-claw": "openclaw",
+}
+
+
+def playground_service_id(product: str) -> str:
+    """Map a finding product name to a playground `services=` slug."""
+    s = _slug(product)
+    return PLAYGROUND_SERVICE_IDS.get(s, s)
+
+
 def deep_link(g: str, findings: list[dict], source: str = "ci") -> str:
     """Playground deep link: grade, finding count, product names only —
     never the target. `source` is the from= tag: "ci" for the action
     summary, "cli" for the terminal door line."""
     services: list[str] = []
     for f in findings:
-        s = _slug(f["product"])
+        s = playground_service_id(f["product"])
         if s not in services:
             services.append(s)
     url = f"{PLAYGROUND_URL}?from={source}&grade={g}&findings={len(findings)}"

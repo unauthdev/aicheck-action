@@ -2,7 +2,7 @@ name: aicheck
 description: >-
   Fail the build if your PR ships an exposed self-hosted AI service.
   Live-probes Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, MCP servers
-  and 10 more — graded report, fix-card links, SARIF annotations.
+  and 10 more — graded report, fix-card links, SARIF code scanning on by default.
 author: unauthdev
 branding:
   icon: shield

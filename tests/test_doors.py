@@ -119,12 +119,25 @@ def test_action_summary_keeps_from_ci() -> None:
     print("ok — action summary render still deep-links with from=ci")
 
 
+def test_deep_link_maps_scanner_products_to_playground_ids() -> None:
+    url = render_mod.deep_link("F", [
+        {"product": "MCP server"},
+        {"product": "Open WebUI"},
+        {"product": "CrewAI Studio"},
+        {"product": "Ollama"},
+    ])
+    assert "services=mcp,openwebui,crewai,ollama" in url, url
+    assert render_mod.playground_service_id("MCP server") == "mcp"
+    print("ok — deep_link maps scanner products to playground block ids")
+
+
 def main() -> int:
     test_findings_door_is_last_line()
     test_door_url_never_contains_target()
     test_clean_door_is_last_line()
     test_link_builder_defined_once()
     test_action_summary_keeps_from_ci()
+    test_deep_link_maps_scanner_products_to_playground_ids()
     print("all door tests passed")
     return 0
 

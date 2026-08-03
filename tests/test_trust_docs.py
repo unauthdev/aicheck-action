@@ -61,6 +61,12 @@ def test_readme_links_trust_docs() -> None:
     text = (ROOT / "README.md").read_text()
     assert "docs/trust.md" in text, "README does not link docs/trust.md"
     assert "SECURITY.md" in text, "README does not link SECURITY.md"
+    assert "docs/marketplace.md" in text, "README does not link docs/marketplace.md"
+    assert (ROOT / "examples" / "github-action.yml").is_file()
+    assert (ROOT / "docs" / "marketplace.md").is_file()
+    # Do not claim a live Marketplace URL until the listing returns 200
+    assert "marketplace/actions/aicheck)" not in text.replace(
+        "docs/marketplace.md", ""), "README links a Marketplace URL that may 404"
 
 
 def test_version_single_sourced() -> None:
