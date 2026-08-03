@@ -1,5 +1,6 @@
 # aicheck
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-aicheck--scan-blue?logo=github)](https://github.com/marketplace/actions/aicheck-scan)
 [![Use this Action](https://img.shields.io/badge/GitHub-Use%20this%20Action-orange?logo=github)](https://github.com/unauthdev/aicheck-scan#add-to-your-repo-60-seconds)
 [![selftest](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml/badge.svg)](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml)
 [![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-scan/pkgs/container/aicheck)
@@ -9,10 +10,14 @@
 
 A GitHub Action that live-probes the AI stack your job just started — Ollama,
 n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant, AnythingLLM,
-Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, MCP servers — grades it
+Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis consoles, MCP servers — grades it
 A–F, and reports the results in the run summary and **code scanning (SARIF on
 by default)**, each linking a plain-English fix card. From
 [unauth.dev](https://unauth.dev), the free AI-stack exposure checker.
+
+Install from the [GitHub Marketplace](https://github.com/marketplace/actions/aicheck-scan),
+or follow the steps below. Maintainer listing notes:
+[`docs/marketplace.md`](docs/marketplace.md).
 
 ## Add to your repo (60 seconds)
 
@@ -38,9 +43,7 @@ jobs:
 ```
 
 Pin `@v1` for floating majors, or `@v1.1.1` for an exact release. More examples:
-[`examples/`](examples/). Marketplace listing steps for maintainers:
-[`docs/marketplace.md`](docs/marketplace.md).
-
+[`examples/`](examples/).
 ## Why live probing
 
 This is not a config linter. The action starts from what actually answers:
