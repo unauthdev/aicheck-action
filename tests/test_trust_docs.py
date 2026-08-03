@@ -65,7 +65,7 @@ def test_readme_links_trust_docs() -> None:
     assert (ROOT / "examples" / "github-action.yml").is_file()
     assert (ROOT / "docs" / "marketplace.md").is_file()
     # Do not claim a live Marketplace URL until the listing returns 200
-    assert "marketplace/actions/aicheck)" not in text.replace(
+    assert "marketplace/actions/aicheck-scan)" not in text.replace(
         "docs/marketplace.md", ""), "README links a Marketplace URL that may 404"
 
 
