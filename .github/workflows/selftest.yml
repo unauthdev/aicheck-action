@@ -18,6 +18,8 @@ on:
 jobs:
   exposed-fixtures:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
     services:
       ollama:
         image: ollama/ollama:0.32.5
@@ -36,7 +38,9 @@ jobs:
 
       # The action itself: this must FAIL the step (default containers are
       # unauthenticated — that is the point). Its job summary doubles as the
-      # living demo for the Marketplace page.
+      # living demo for the Marketplace page. upload-sarif: true exercises the
+      # findings-present SARIF shape (http-scheme artifact URIs) against
+      # GitHub code scanning — the clean-fixture job only covers zero results.
       - name: aicheck (expected to fail the build)
         id: exposed
         uses: ./
@@ -44,7 +48,7 @@ jobs:
         with:
           target: localhost
           fail-grade: F
-          upload-sarif: false
+          upload-sarif: true
 
       - name: assert grade, findings, and checker silence
         shell: bash

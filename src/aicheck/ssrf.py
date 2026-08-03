@@ -55,9 +55,12 @@ def normalize_target(raw: str) -> str:
 
 
 def ensure_public(host: str) -> list[str]:
-    """Resolve host and reject it if ANY resolved address is non-public.
+    """Resolve host and reject it if ANY resolved *IPv4* is non-public.
 
-    Returns the sorted list of resolved IPs.
+    Returns the sorted list of public IPv4 addresses. IPv6 is not supported
+    yet: AAAA answers are ignored so dual-stack hosts still scan via A
+    records; AAAA-only hosts are rejected explicitly (instead of producing
+    a silent empty grade-A scan from unbracketed IPv6 URLs).
     """
     try:
         literal = ipaddress.ip_address(host)
@@ -70,8 +73,11 @@ def ensure_public(host: str) -> list[str]:
         ips = sorted({info[4][0] for info in infos})
         if not ips:
             raise TargetRejected(f"could not resolve {host!r}")
+    v4: list[str] = []
     for s in ips:
         ip = ipaddress.ip_address(s)
+        if isinstance(ip, ipaddress.IPv6Address):
+            continue
         if (
             ip.is_private
             or ip.is_loopback
@@ -86,7 +92,12 @@ def ensure_public(host: str) -> list[str]:
                 f"{host!r} resolves to a non-public address ({s}) — "
                 "only public targets you own may be scanned"
             )
-    return ips
+        v4.append(s)
+    if not v4:
+        raise TargetRejected(
+            f"{host!r} resolves only to IPv6 — IPv6 targets are not supported yet"
+        )
+    return sorted(v4)
 
 
 def validate_target(raw: str) -> tuple[str, list[str]]:

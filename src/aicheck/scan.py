@@ -58,7 +58,19 @@ def resolve_internal(raw: str) -> tuple[str, list[str]]:
     ips = sorted({info[4][0] for info in infos})
     if not ips:
         raise ssrf.TargetRejected(f"could not resolve {host!r}")
-    return host, ips
+    # Prefer IPv4 — unbracketed IPv6 URLs break httpx; dual-stack docker
+    # names often return AAAA first under sorted(str).
+    v4 = [s for s in ips
+          if isinstance(ipaddress.ip_address(s), ipaddress.IPv4Address)]
+    return host, (sorted(v4) if v4 else ips)
+
+
+def _services_wanted(finding, wanted: set[str]) -> bool:
+    """Exact match on check_id or product (case-insensitive), not substring."""
+    return (
+        finding.check_id.lower() in wanted
+        or finding.product.lower() in wanted
+    )
 
 
 async def scan(target: str, allow_private: bool = False,
@@ -75,9 +87,8 @@ async def scan(target: str, allow_private: bool = False,
     facts = await recon.gather_facts(host, transport=transport, pinned_ips=ips, log=log)
     findings = run_checkers(facts, host)
     if services:
-        wanted = [s.lower() for s in services]
-        findings = [f for f in findings
-                    if any(w in f.product.lower() for w in wanted)]
+        wanted = {s.lower() for s in services}
+        findings = [f for f in findings if _services_wanted(f, wanted)]
     return grade(findings), [f.to_dict() for f in findings]
 
 
@@ -98,13 +109,20 @@ def _door_line(g: str, findings: list[dict]) -> str:
             f"{deep_link(g, findings, source='cli')}")
 
 
-def render_text(target: str, g: str, findings: list[dict]) -> str:
+def render_text(target: str, g: str, findings: list[dict],
+                services_filter: list[str] | None = None) -> str:
     lines = [f"aicheck — {target} → grade {g} ({len(findings)} findings)"]
     for f in findings:
         lines.append(f"  {f['severity']:8} {f['product']}: {f['title']}")
         lines.append(f"           fix: https://unauth.dev/fixes/{f['fix_card_id']}")
     if not findings:
-        lines.append("  clean — no exposed AI services found")
+        if services_filter:
+            lines.append(
+                f"  no findings in filtered services ({', '.join(services_filter)}) "
+                "— other products were not graded"
+            )
+        else:
+            lines.append("  clean — no exposed AI services found")
     lines.append(_door_line(g, findings))
     return "\n".join(lines) + "\n"
 
@@ -168,12 +186,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"# {len(dialed)} connections, all to {args.target} "
               f"(IPs: {', '.join(sorted(set(dialed)))})", file=sys.stderr)
 
+    payload = {"target": args.target, "grade": g, "findings": findings}
+    if services:
+        payload["services_filter"] = services
     if args.format == "json":
-        print(json.dumps({"target": args.target, "grade": g, "findings": findings}, indent=2))
+        print(json.dumps(payload, indent=2))
     elif args.format == "sarif":
         print(json.dumps(sarif.to_sarif(args.target, g, findings), indent=2))
     else:
-        print(render_text(args.target, g, findings), end="")
+        print(render_text(args.target, g, findings, services_filter=services), end="")
     # weekly PyPI version check — after output, failure-invisible, off on
     # --dry-run (returns above) and --version (exits in argparse)
     versioncheck.check_for_update(disabled=args.no_version_check)
