@@ -80,11 +80,38 @@ def check(target: str) -> None:
     assert f"http://{target}:5678" not in blob
 
 
+def check_bare_fqdn_in_evidence() -> None:
+    """FQDN/IP tokens in free-text evidence must redact even without :port."""
+    target = "internal.acme.corp"
+    out = redact({
+        "target": target,
+        "grade": "F",
+        "findings": [{
+            "check_id": "ollama",
+            "product": "Ollama",
+            "title": "exposed",
+            "severity": "CRITICAL",
+            "url": f"http://{target}:11434/",
+            "evidence": f"host {target} is wide open",
+            "fix_card_id": "ollama-exposed",
+            "details": {"note": f"host {target} responded"},
+        }],
+    })
+    blob = json.dumps(out)
+    assert target not in blob, blob
+    assert REDACTED_TARGET in out["findings"][0]["evidence"]
+    # product-slug targets still must not corrupt identifiers
+    slug = redact(make_artifact("ollama"))
+    assert slug["findings"][0]["fix_card_id"] == "ollama-exposed"
+
+
 def main() -> int:
     for target in ["ollama", "n8n", "10.0.0.1", "my-host.internal",
                    "localhost", "target"]:
         check(target)
         print(f"ok — target {target!r}")
+    check_bare_fqdn_in_evidence()
+    print("ok — bare FQDN evidence redacted")
     print("all redact tests passed")
     return 0
 

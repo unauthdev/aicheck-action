@@ -41,10 +41,24 @@ don't trust this page. check:
 
 ## the one network call beyond your target
 
-version check — landing in an upcoming release; today's CLI dials nothing
-but your target. once it ships: once per week, if online, the CLI checks
-PyPI's JSON API for a newer version; disable with `--no-version-check` or
-`AICHECK_NO_VERSION_CHECK=1`; it never goes anywhere else.
+once per week, if online, the CLI checks PyPI's JSON API for a newer
+version (3s timeout, cannot raise, PyPI-only). disable with
+`--no-version-check` or `AICHECK_NO_VERSION_CHECK=1`; it never goes
+anywhere else.
+
+## Action pin posture
+
+`uses: unauthdev/aicheck-scan@v1` is a **mutable** floating major tag (convenience).
+Third-party Actions in this repo are pinned to full SHAs (Dependabot keeps
+them fresh). For a SHA-locked consumer install:
+
+```yaml
+- uses: unauthdev/aicheck-scan@<full-commit-sha>  # pin a release commit
+```
+
+`--allow-private` is intentional inside CI runners (you already control that
+network). The Action is not a sandbox — a malicious workflow can still reach
+metadata IPs the same way `curl` could.
 
 ## hash-pinned install
 

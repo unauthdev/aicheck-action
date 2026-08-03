@@ -30,7 +30,7 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
       with:
         python-version: "3.11"
         # no cache: pip — setup-python fails hard when the CALLING repo has
@@ -72,7 +72,7 @@ runs:
 
     - name: Upload SARIF to code scanning
       if: inputs.upload-sarif == 'true' && steps.scan.outputs.has_sarif == 'true'
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@a2983b8bed1923f44751c5c43237f479442827b3  # v3
       with:
         sarif_file: aicheck.sarif
 

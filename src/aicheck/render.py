@@ -49,12 +49,23 @@ _NEVER_REDACT_KEYS = {"check_id", "fix_card_id", "product", "cve",
 
 
 def _redact_host_context(text: str, host: str) -> str:
-    """Replace `host` only in URL/host context — immediately followed by a
-    port (:11434) or a path (/api) — never as a bare substring, so a target
-    like 'ollama' can't corrupt check_id/fix_card_id ('ollama-exposed')."""
+    """Replace `host` in URL/host context (host:port or host/path).
+
+    Bare product-slug targets like ``ollama`` must NOT be scrubbed as
+    substrings — that corrupted ``ollama-exposed`` fix-card ids. FQDNs and
+    IPv4 literals *are* scrubbed as whole tokens so free-text evidence
+    cannot keep ``internal.acme.corp`` after ``--redact``.
+    """
     if not host:
         return text
-    return re.sub(re.escape(host) + r"(?=:\d|/)", REDACTED_TARGET, text)
+    text = re.sub(re.escape(host) + r"(?=:\d|/)", REDACTED_TARGET, text)
+    if "." in host:  # FQDN or IPv4 — safe as a whole-word token
+        text = re.sub(
+            r"(?<![A-Za-z0-9.-])" + re.escape(host) + r"(?![A-Za-z0-9.-])",
+            REDACTED_TARGET,
+            text,
+        )
+    return text
 
 
 def _redact_value(value, hosts: list[str]):
