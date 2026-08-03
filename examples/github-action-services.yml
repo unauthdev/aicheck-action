@@ -1,0 +1,19 @@
+# Same as github-action.yml, but only probe the products you ship.
+# Empty `services` = all products (default).
+
+name: ai-stack-exposure
+on: [pull_request]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  aicheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: unauthdev/aicheck-scan@v1
+        with:
+          target: localhost
+          services: ollama,n8n,mcp
+          fail-grade: C

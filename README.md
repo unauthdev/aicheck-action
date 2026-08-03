@@ -1,6 +1,6 @@
 # aicheck
 
-[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-aicheck-orange?logo=github)](https://github.com/marketplace/actions/aicheck)
+[![Use this Action](https://img.shields.io/badge/GitHub-Use%20this%20Action-orange?logo=github)](https://github.com/unauthdev/aicheck-scan#add-to-your-repo-60-seconds)
 [![selftest](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml/badge.svg)](https://github.com/unauthdev/aicheck-scan/actions/workflows/selftest.yml)
 [![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-scan/pkgs/container/aicheck)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -10,9 +10,36 @@
 A GitHub Action that live-probes the AI stack your job just started — Ollama,
 n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant, AnythingLLM,
 Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, MCP servers — grades it
-A–F, and reports the results in the run summary and code scanning, each
-linking a plain-English fix card. From [unauth.dev](https://unauth.dev), the
-free AI-stack exposure checker.
+A–F, and reports the results in the run summary and **code scanning (SARIF on
+by default)**, each linking a plain-English fix card. From
+[unauth.dev](https://unauth.dev), the free AI-stack exposure checker.
+
+## Add to your repo (60 seconds)
+
+1. Copy [`examples/github-action.yml`](examples/github-action.yml) to
+   `.github/workflows/aicheck.yml` (or use the minimal snippet below).
+2. Point `target` at the host your job starts (often `localhost` + a `services:` block).
+3. Ensure the job has `permissions: security-events: write` so SARIF lands in
+   **Security → Code scanning**.
+
+```yaml
+name: ai-stack-exposure
+on: [pull_request]
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  aicheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: unauthdev/aicheck-scan@v1
+        with:
+          target: localhost
+```
+
+Pin `@v1` for floating majors, or `@v1.1.1` for an exact release. More examples:
+[`examples/`](examples/). Marketplace listing steps for maintainers:
+[`docs/marketplace.md`](docs/marketplace.md).
 
 ## Why live probing
 
@@ -37,14 +64,15 @@ from CI) — that's what post-deploy monitoring is for.
 
 Same engine, same severity model, same grade — pick the door that fits.
 
-## Usage
+## Usage (fail the PR on exposure)
 
 ```yaml
 name: ai-stack-exposure
 on: [pull_request]
 
 permissions:
-  security-events: write   # for the SARIF annotations
+  contents: read
+  security-events: write   # SARIF → code scanning (default on)
 
 jobs:
   aicheck:
@@ -60,8 +88,9 @@ jobs:
           fail-grade: C      # D or F fails the build
 ```
 
-The demo above fails: a default Ollama container is unauthenticated — that's
-the point. Fix it (the annotation links the fix card), watch it go green.
+Full copy-paste: [`examples/github-action.yml`](examples/github-action.yml).
+A default Ollama container fails — that's the point. Fix it (the annotation
+links the fix card), watch it go green.
 
 What you get on the run page:
 
