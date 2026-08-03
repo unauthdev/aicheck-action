@@ -181,6 +181,39 @@ def test_silent_by_default() -> None:
     print("ok — no → GET lines without --verbose")
 
 
+def test_cross_host_redirect_blocked() -> None:
+    """Cross-host redirects must not turn the scanner into an open GET proxy."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/cross":
+            return httpx.Response(
+                302, headers={"location": "http://169.254.169.254/latest/meta-data/"})
+        if path == "/same":
+            return httpx.Response(302, headers={"location": "/ok"})
+        if path == "/ok":
+            return httpx.Response(200, text="ok")
+        if path == "/gopher":
+            return httpx.Response(302, headers={"location": "gopher://evil/1"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=transport, timeout=5.0) as client:
+            cross = await recon._fetch(client, "example.test", None, 80, "/cross")
+            assert cross.error == "CrossHostRedirectBlocked", cross
+
+            same = await recon._fetch(client, "example.test", None, 80, "/same")
+            assert same.status_code == 200 and same.body == "ok", same
+
+            gopher = await recon._fetch(client, "example.test", None, 80, "/gopher")
+            # unsupported schemes degrade to a probe error, not a follow
+            assert gopher.status_code is None and gopher.error, gopher
+
+    asyncio.run(run())
+    print("ok — cross-host redirect blocked; same-host followed; gopher not followed")
+
+
 def main() -> int:
     test_dry_run_output()
     test_dry_run_touches_nothing()
@@ -188,6 +221,7 @@ def main() -> int:
     test_verbose_logs_every_connection()
     test_verbose_log_shows_host_url_and_pinned_ip()
     test_silent_by_default()
+    test_cross_host_redirect_blocked()
     print("all dry-run/verbose tests passed")
     return 0
 

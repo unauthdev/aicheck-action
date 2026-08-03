@@ -20,8 +20,8 @@ jobs:
   link-crawl:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: install deps
@@ -32,14 +32,19 @@ jobs:
   grade-coherence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           path: action
           persist-credentials: false   # the workflow token is scoped to this
                                        # repo and breaks the cross-repo clone
       - name: clone the site engine (private repo, read-only PAT)
-        run: git clone --depth 1 https://x-access-token:${{ secrets.SITE_ENGINE_PAT }}@github.com/unauthdev/aicheck.git site
-      - uses: actions/setup-python@v5
+        env:
+          SITE_ENGINE_PAT: ${{ secrets.SITE_ENGINE_PAT }}
+        run: |
+          # Prefer header auth over token-in-URL (avoids .git/config persistence).
+          git -c http.extraheader="AUTHORIZATION: bearer ${SITE_ENGINE_PAT}" \
+            clone --depth 1 https://github.com/unauthdev/aicheck.git site
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: install deps
@@ -55,8 +60,8 @@ jobs:
   privacy-redact:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: install deps

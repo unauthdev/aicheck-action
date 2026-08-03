@@ -3,6 +3,11 @@
 #
 # This fails on a stock Ollama container — that's the demo.
 # Point `target` at the host your job actually starts.
+#
+# @v1 is a floating major tag. For a locked install, pin a release commit SHA:
+#   uses: unauthdev/aicheck-scan@<sha>
+# The Action uses --allow-private (CI localhost / private services). It is not
+# a network sandbox — treat workflow authors as trusted for that runner.
 
 name: ai-stack-exposure
 on:
