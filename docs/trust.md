@@ -35,7 +35,8 @@ don't trust this page. check:
   `actions/attest-build-provenance`). verify an artifact with
   `gh attestation verify`.
 - publishing uses OIDC trusted publishing — there is no PyPI API token
-  anywhere, so there is no token to leak.
+  anywhere, so there is no token to leak. Maintainer checklist:
+  [`docs/pypi.md`](pypi.md).
 - the build is reproducible: `pip install build && python -m build` on a
   clean checkout.
 
