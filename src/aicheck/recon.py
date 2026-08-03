@@ -35,9 +35,14 @@ PROBES: list[tuple[int, str]] = [
     # Open WebUI
     (8080, "/"),
     (8080, "/api/config"),
-    # vLLM
+    # vLLM + OpenAI-compatible proxies (LiteLLM :4000, etc.)
     (8000, "/v1/models"),
     (8000, "/version"),
+    (4000, "/v1/models"), (8080, "/v1/models"), (5000, "/v1/models"),
+    # OpenHands Agent Server (GET / and /server_info → ServerInfo JSON)
+    (8000, "/"), (8000, "/server_info"), (8000, "/alive"),
+    (3000, "/server_info"),
+    (8080, "/server_info"),
     # Langfuse (shares :3000 — fingerprint by content, never by port alone)
     (3000, "/"),
     (3000, "/api/public/health"),

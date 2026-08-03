@@ -12,6 +12,8 @@ from . import (
     mcp,
     n8n,
     ollama,
+    openai_compat,
+    openhands,
     openwebui,
     qdrant,
     ray,
@@ -22,5 +24,7 @@ from . import (
 
 ALL_CHECKERS = [
     ollama, n8n, openwebui, vllm, langfuse, comfyui, ray, dify, qdrant,
-    anythingllm, jupyter, gradio_langflow, flowise, chroma, weaviate, mcp, redis,
+    anythingllm, jupyter, gradio_langflow, flowise, chroma, weaviate, mcp,
+    openhands, redis,
+    openai_compat,  # after product checkers — generic /v1/models leftover
 ]
