@@ -33,7 +33,10 @@ def facts() -> dict:
 
 
 def main() -> int:
-    findings = run_checkers(facts(), "fixture-host")
+    res = run_checkers(facts(), "fixture-host")
+    # Engine 1.2.4+ returns (findings, observations); older engines return
+    # findings only. Grade coherence compares findings either way.
+    findings = res[0] if isinstance(res, tuple) else res
     out = {
         "grade": grade(findings),
         "findings": sorted(
