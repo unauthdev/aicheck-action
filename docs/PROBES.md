@@ -41,6 +41,7 @@ Source of truth: `aicheck/recon.py` → `PROBES`.
 
 | Port | Paths (representative) | Products (if content matches) |
 |---:|---|---|
+| 80 | `/`, `/signin` | Dify, Attu (Milvus UI) |
 | 11434 | `/`, `/api/version`, `/api/tags` | Ollama |
 | 5678 | `/`, `/rest/settings` | n8n |
 | 8080 | `/`, `/api/config`, `/v1/models`, `/v1/meta`, `/v1/schema`, MCP paths, … | Open WebUI, Weaviate, OpenAI-compat, MCP, … |

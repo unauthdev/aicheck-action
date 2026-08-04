@@ -63,6 +63,9 @@ PROBES: list[tuple[int, str]] = [
     # Dify (web :80/:3000, api :5001 — fingerprint by content)
     (80, "/signin"),
     (5001, "/console/api/setup"),
+    # Attu (Milvus UI) can answer the :80 root — content fingerprint only
+    # (requires BOTH "attu" and "milvus" in the body, never port alone)
+    (80, "/"),
     # Qdrant
     (6333, "/"),
     (6333, "/collections"),

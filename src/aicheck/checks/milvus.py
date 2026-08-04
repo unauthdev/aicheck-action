@@ -41,7 +41,7 @@ FIX_CARD_ID = "milvus-exposed"
 _VERSION_RE = re.compile(r"milvus/(\d+(?:\.\d+)*)", re.IGNORECASE)
 
 # Shared web ports whose root probe Attu can answer (fact keys from
-# recon.PROBES; 80:/ is replay-only until a root probe exists for it).
+# recon.PROBES, which probes / on 8000, 3000, and 80).
 _ATTU_PORTS = (8000, 3000, 80)
 
 
