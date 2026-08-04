@@ -24,6 +24,7 @@ import yaml
 
 from . import scan
 from .inventory_findings import enrich_finding
+from .probe_class import ProbeClassError, ProbeMode, resolve_probe_mode
 from .ssrf import TargetRejected
 
 _HOST_LINE = re.compile(
@@ -186,9 +187,11 @@ async def run_inventory(
     allow_private: bool = False,
     services: list[str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    probe_mode: ProbeMode | None = None,
 ) -> dict[str, Any]:
     started = utc_now()
     rid = run_id_from(started)
+    mode = probe_mode or resolve_probe_mode()
     prev_state = load_state(state_dir)
     previous = dict(prev_state.get("findings") or {})
 
@@ -260,6 +263,7 @@ async def run_inventory(
         "targets": results,
         "phone_home": False,
         "probe_model": "docs/PROBES.md",
+        "probe_mode": mode.to_dict(),
     }
     save_state(
         state_dir,
@@ -305,16 +309,20 @@ def render_text(report: dict[str, Any]) -> str:
     if not d["new"] and not d["fixed"]:
         lines.append("No drift since last run." if report["finding_count"] else "Clean — no exposed AI services found.")
         lines.append("")
-    lines.append(f"State written under state-dir (latest.json). No telemetry left this host.")
+    mode = report.get("probe_mode") or {}
+    lines.append(
+        f"Probe class {mode.get('probe_class', 'A')}. "
+        f"State under state-dir (latest.json). No telemetry left this host."
+    )
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="python -m aicheck.inventory",
+        prog="aicheck inventory",
         description=(
             "Local continuous inventory of self-hosted AI services. "
-            "GET-only probes; results stay on disk; no phone-home."
+            "Default Class A = GET-only; results stay on disk; no phone-home."
         ),
     )
     ap.add_argument(
@@ -349,6 +357,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="exit 1 if any NEW findings appeared since the previous run",
     )
+    ap.add_argument(
+        "--deep",
+        action="store_true",
+        help=(
+            "Class B gate: customer-run estate mode (requires "
+            "--i-own-these-targets). No deep packs ship yet — traffic still "
+            "matches Class A until packs are added."
+        ),
+    )
+    ap.add_argument(
+        "--i-own-these-targets",
+        action="store_true",
+        help="required with --deep: you authorize probing these hosts",
+    )
+    ap.add_argument(
+        "--deep-packs",
+        default="",
+        help="comma-separated Class B packs (none available yet)",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -360,6 +387,17 @@ def main(argv: list[str] | None = None) -> int:
         print("targets error: empty list", file=sys.stderr)
         return 2
 
+    packs = [s.strip() for s in args.deep_packs.split(",") if s.strip()]
+    try:
+        probe_mode = resolve_probe_mode(
+            deep=args.deep,
+            i_own_these_targets=args.i_own_these_targets,
+            deep_packs=packs,
+        )
+    except ProbeClassError as exc:
+        print(f"probe class error: {exc}", file=sys.stderr)
+        return 2
+
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
     report = asyncio.run(
         run_inventory(
@@ -367,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             args.state_dir,
             allow_private=args.allow_private,
             services=services,
+            probe_mode=probe_mode,
         )
     )
 
