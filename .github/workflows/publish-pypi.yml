@@ -93,9 +93,9 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           sums=$(cd dist && sha256sum * | sort)
-          body=$(gh release view "$tag" --json body -q .body)
+          body=$(gh release view "$tag" -R "${{ github.repository }}" --json body -q .body)
           printf '%s\n\n## SHA256\n\n```\n%s\n```\n' "$body" "$sums" > notes.md
-          gh release edit "$tag" --notes-file notes.md
+          gh release edit "$tag" -R "${{ github.repository }}" --notes-file notes.md
 
   publish-pypi:
     if: github.event_name == 'release'
