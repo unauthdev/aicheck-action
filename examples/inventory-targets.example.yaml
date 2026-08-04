@@ -1,6 +1,7 @@
 # Local inventory targets — never sent to unauth.dev.
-# host: address or DNS name to probe
+# host: address, DNS name, or CIDR (expanded with --max-hosts, default 256)
 # owner / env: optional correlation tags from YOUR CMDB (scanner does not invent them)
+# Also supported: .csv and flow-log-ish .jsonl (see sibling example files)
 
 targets:
   - host: 10.0.1.5
@@ -9,3 +10,7 @@ targets:
   - host: ollama.dev.internal
     owner: data-science
     env: development
+  # - host: 10.0.2.0/24
+  #   owner: platform
+  #   env: staging
+

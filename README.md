@@ -140,10 +140,14 @@ aicheck scan localhost --allow-private --fail-grade F
 
 # Local estate inventory (air-gapped; nothing phones home)
 aicheck inventory --targets targets.yaml --state-dir ./state --allow-private
+
+# CSV / flow-log JSONL / CIDRs + webhook to YOUR endpoint on new findings
+aicheck inventory --targets hosts.jsonl --state-dir ./state --allow-private \
+  --webhook https://hooks.example.internal/aicheck --webhook-on new
 ```
 
-Probe contract (exact GETs, permissions, what we miss): [`docs/PROBES.md`](docs/PROBES.md).
-Example targets file: [`examples/inventory-targets.example.yaml`](examples/inventory-targets.example.yaml).
+Probe contract: [`docs/PROBES.md`](docs/PROBES.md).  
+Targets: YAML / CSV / JSONL examples under [`examples/`](examples/).
 
 The package installs the `aicheck` console command — same engine the Action and
 the Docker image run.
