@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# base pinned by digest (resolved from the Docker Hub registry, 2026-08);
+# dependabot/renovate should bump the digest as new 3.11-slim builds land
+FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
 WORKDIR /opt/aicheck
 COPY pyproject.toml README.md LICENSE ./

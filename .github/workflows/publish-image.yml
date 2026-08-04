@@ -8,14 +8,24 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write     # gh release upload (SBOM attachment)
   packages: write
+  id-token: write       # for the build-provenance attestation
+  attestations: write
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # same single-sourcing gate as publish-pypi.yml: the tag IS the version
+      - name: assert __version__ matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(python3 -c "import re,pathlib; t=pathlib.Path('src/aicheck/__init__.py').read_text(); print(re.search(r'__version__\\s*=\\s*\"([^\"]+)\"', t).group(1))")
+          echo "tag=$tag version=$ver"
+          test "$ver" = "$tag"
 
       # derive the floating major tag from the ref: v2.1.0 -> v2 (never a
       # hardcoded major — a v2 tag must not overwrite the v1 image)
@@ -35,8 +45,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
+        id: build
         with:
           context: .
           file: packaging/Dockerfile
           push: true
           tags: ${{ steps.img.outputs.tags }}
+
+      # SBOM of the pushed image, kept as a run artifact and (best effort)
+      # attached to the release next to the PyPI SHA256 sums
+      - name: generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: ghcr.io/unauthdev/aicheck:${{ github.ref_name }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: attach SBOM to the release
+        continue-on-error: true   # the release may not exist yet; never block the image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" sbom.spdx.json --clobber
+
+      # SLSA build provenance for the image digest — same posture as the
+      # PyPI dist attestations; verify with `gh attestation verify`.
+      - name: attest image build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2
+        with:
+          subject-name: ghcr.io/unauthdev/aicheck
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

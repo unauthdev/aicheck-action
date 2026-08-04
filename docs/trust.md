@@ -40,6 +40,36 @@ don't trust this page. check:
 - the build is reproducible: `pip install build && python -m build` on a
   clean checkout.
 
+## verifying the container image
+
+the `ghcr.io/unauthdev/aicheck` image gets the same treatment as the PyPI
+dists, via
+[.github/workflows/publish-image.yml](https://github.com/unauthdev/aicheck-scan/blob/main/.github/workflows/publish-image.yml):
+
+- the base image (`python:3.11-slim`) is pinned by digest in
+  `packaging/Dockerfile` — no floating base.
+- every tag build emits a build-provenance attestation for the image digest.
+  verify what you pulled:
+
+  ```bash
+  gh attestation verify oci://ghcr.io/unauthdev/aicheck:v1 \
+    --owner unauthdev
+  ```
+
+- an SBOM (SPDX-JSON, via `anchore/sbom-action`) is generated for every
+  image and attached to the release as `sbom.spdx.json` — diff it between
+  releases if you want to know exactly what changed inside.
+- tag pushes assert the tag equals `__version__` before anything is built,
+  so `v1.2.3` the tag is always `1.2.3` the code.
+
+## per-release hashes
+
+the release notes for each version carry the sha256 of the sdist and wheel
+(appended by the publish workflow itself, straight from the built `dist/`).
+that's the number to pin against in `--require-hashes` installs — not a
+hash you computed from whatever the index handed you, and not one we typed
+into the notes by hand.
+
 ## the one network call beyond your target
 
 once per week, if online, the CLI checks PyPI's JSON API for a newer

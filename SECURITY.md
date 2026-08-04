@@ -5,9 +5,15 @@
 email **security@unauth.dev** with what you found, how to reproduce it, and
 the version you tested. plain text is fine, no pgp required yet.
 
-we aim to acknowledge within 72 hours and will keep you posted as we
-triage. please give us a reasonable window to fix before disclosing
-publicly.
+we aim to acknowledge within 72 hours, give a triage verdict within 7 days,
+and ship a fix or mitigation within 30 days for confirmed issues. please
+give us that window before disclosing publicly.
+
+## who maintains this
+
+aicheck is built and maintained by one person: **raúl acedo**
+(https://unauth.dev/about). reports go to the maintainer directly — there is
+no separate security team or outsourced triage.
 
 ## supported versions
 
