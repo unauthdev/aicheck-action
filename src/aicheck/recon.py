@@ -14,6 +14,9 @@ import httpx
 
 from .models import ProbeResult
 
+# A connection log entry: (method, logical URL, address actually dialed).
+ConnectLog = Callable[[str, str, str], None]
+
 MAX_BODY = 64 * 1024
 TIMEOUT = httpx.Timeout(5.0, connect=3.0)
 CONCURRENCY = 12
@@ -35,14 +38,15 @@ PROBES: list[tuple[int, str]] = [
     # Open WebUI
     (8080, "/"),
     (8080, "/api/config"),
-    # vLLM + OpenAI-compatible proxies (LiteLLM :4000, etc.)
+    # vLLM
     (8000, "/v1/models"),
-    (8000, "/version"),
     (4000, "/v1/models"), (8080, "/v1/models"), (5000, "/v1/models"),
+    (3000, "/v1/models"), (1234, "/v1/models"), (443, "/v1/models"),
     # OpenHands Agent Server (GET / and /server_info → ServerInfo JSON)
     (8000, "/"), (8000, "/server_info"), (8000, "/alive"),
     (3000, "/server_info"),
     (8080, "/server_info"),
+    (8000, "/version"),
     # Langfuse (shares :3000 — fingerprint by content, never by port alone)
     (3000, "/"),
     (3000, "/api/public/health"),
@@ -74,13 +78,30 @@ PROBES: list[tuple[int, str]] = [
     (7860, "/config"),
     (7860, "/api/v1/version"),
     (7860, "/health"),
-    # Flowise (shares :3000 — content decides)
+    # Flowise (shares :3000 — content decides; public-chatflows is auth-whitelisted)
     (3000, "/api/v1/ping"),
+    (3000, "/api/v1/version"),
+    (3000, "/api/v1/public-chatflows"),
     # Chroma (shares :8000 with vLLM — content decides)
     (8000, "/api/v1/heartbeat"),
     (8000, "/api/v2/heartbeat"),
     (8000, "/api/v1/collections"),
     (8000, "/api/v2/collections"),
+    (8000, "/api/v2/version"),
+    (8000, "/api/v1/version"),
+    # LangServe (shares :8000/:8080 — content decides via openapi/docs)
+    (8000, "/openapi.json"), (8000, "/docs"),
+    (8080, "/openapi.json"), (8080, "/docs"),
+    # AutoGen Studio (shares :8000/:8080 — content: "AutoGen Studio API")
+    (8000, "/api/version"), (8000, "/api/health"),
+    (8080, "/api/version"), (8080, "/api/health"),
+    (8081, "/api/version"), (8081, "/api/health"),
+    # CrewAI Studio login (content: CrewAI Studio + app.crewai.com)
+    (8000, "/auth/login"), (8080, "/auth/login"), (8501, "/auth/login"),
+    (3000, "/auth/login"),
+    # OpenClaw / Clawdbot gateway (default :18789)
+    (18789, "/"), (18789, "/__openclaw/control-ui-config.json"),
+    (8080, "/__openclaw/control-ui-config.json"),
     # Weaviate (shares :8080 with Open WebUI — content decides)
     (8080, "/v1/meta"),
     (8080, "/v1/schema"),
@@ -106,7 +127,13 @@ PROBES: list[tuple[int, str]] = [
     (8000, "/.well-known/mcp/server-card.json"),
     (8080, "/.well-known/mcp"), (8080, "/.well-known/mcp.json"),
     (8080, "/.well-known/mcp/server-card.json"), (8080, "/.well-known/mcp-server"),
-    # MCP SSE session surface (AIG / nuclei GET fingerprint)
+    (443, "/.well-known/mcp"), (443, "/.well-known/mcp.json"),
+    (443, "/.well-known/mcp/server-card.json"), (443, "/.well-known/mcp-server"),
+    # Additive fingerprint coverage (MLflow / LiteLLM / Kubeflow / LM Studio / MCP messages)
+    (5000, "/"), (5000, "/version"),
+    (4000, "/"), (4000, "/health"), (4000, "/health/readiness"), (4000, "/openapi.json"),
+    (8080, "/api/workgroup/env-info"),
+    (1234, "/lmstudio-greeting"), (1234, "/api/v0/models"),
     (3000, "/messages/"), (3001, "/messages/"), (5000, "/messages/"),
     (8000, "/messages/"), (8080, "/messages/"),
 ]
@@ -116,16 +143,10 @@ def fact_key(port: int, path: str) -> str:
     return f"{port}:{path}"
 
 
-# A connection log entry: (method, logical URL, address actually dialed).
-ConnectLog = Callable[[str, str, str], None]
-
-
 def probe_plan() -> list[tuple[int, str]]:
-    """The full (port, path) request list a scan sends: PROBES plus a :443
-    alias of every API path (real-world deployments often sit behind TLS
-    reverse proxies on 443 instead of their product-default port — leakix/
-    Shodan confirm much of the exposed Ollama population answers there).
-    Single source of truth for gather_facts and --dry-run."""
+    """Full (port, path) list a scan sends: PROBES plus a :443 alias of every
+    API path (many deployments sit behind TLS on 443). Source of truth for
+    gather_facts and --dry-run."""
     extra = [(443, path) for (port, path) in PROBES if port not in (80, 443) and path != "/"]
     return PROBES + extra
 
@@ -271,8 +292,6 @@ async def gather_facts(
         for t in pending:
             p, path = tasks[t]
             out[fact_key(p, path)] = ProbeResult(url=f"http://{target}:{p}{path}", status_code=None, error="BudgetExceeded")
-        # Alias good :443 hits (reverse-proxied deployments) back to the
-        # product's canonical key.
         for port, path in PROBES:
             if port in (80, 443) or path == "/":
                 continue

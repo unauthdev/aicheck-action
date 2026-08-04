@@ -3,11 +3,14 @@
 Shares :8080 with Open WebUI: fingerprint strictly by content. GET /v1/meta
 returns Weaviate's module JSON with its version. GET /v1/schema answering
 200 means the schema (and effectively the data plane) is open to anyone.
+
+Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "weaviate"
 FIX_CARD_ID = "weaviate-exposed"
@@ -38,10 +41,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
                 url="http://TARGET:8080/",
                 evidence=(
                     f"GET {meta.url} → 200{version_bit}; GET {schema.url} → 200{class_bit} — "
-                    "no auth required. Anyone can read or delete your vectors"
+                    "no auth required. Anyone can read, poison, or delete your vectors "
+                    "(this store may hold agent memory — see OWASP ASI06 memory poisoning)"
                 ),
                 fix_card_id=FIX_CARD_ID,
-                details={"version": version, "classes": classes},
+                details=with_risk({"version": version, "classes": classes}, AGENT_MEMORY),
             )
         ]
     return [
@@ -51,8 +55,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             title="Weaviate instance exposed to the internet",
             severity="HIGH",
             url="http://TARGET:8080/",
-            evidence=f"GET {meta.url} → 200{version_bit} — Weaviate meta answers anyone",
+            evidence=(
+                f"GET {meta.url} → 200{version_bit} — Weaviate meta answers anyone; "
+                "vector stores like this often hold agent memory (OWASP ASI06)"
+            ),
             fix_card_id=FIX_CARD_ID,
-            details={"version": version},
+            details=with_risk({"version": version}, AGENT_MEMORY),
         )
     ]

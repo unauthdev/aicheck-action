@@ -6,14 +6,17 @@
 [![Docker image](https://img.shields.io/badge/ghcr.io-unauthdev%2Faicheck%3Av1-blue?logo=docker)](https://github.com/unauthdev/aicheck-scan/pkgs/container/aicheck)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Fail the build if your PR ships an exposed self-hosted AI service.**
+**Find exposed self-hosted AI services — in CI, or continuously across your estate.**
 
-A GitHub Action that live-probes the AI stack your job just started — Ollama,
-n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant, AnythingLLM,
-Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis consoles, MCP servers — grades it
-A–F, and reports the results in the run summary and **code scanning (SARIF on
-by default)**, each linking a plain-English fix card. From
-[unauth.dev](https://unauth.dev), the free AI-stack exposure checker.
+One engine, three doors (PyPI / Docker / GitHub Action):
+
+- **`aicheck <target>`** — CI feeder: fail the build if a PR ships an unauthenticated AI service
+- **`aicheck inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `still_open`), no phone-home
+
+Live-probes Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant,
+AnythingLLM, Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis consoles,
+MCP servers and more — grades A–F, SARIF on by default in CI, plain-English fix
+cards. From [unauth.dev](https://unauth.dev).
 
 Install from the [GitHub Marketplace](https://github.com/marketplace/actions/aicheck-scan),
 or follow the steps below. Maintainer listing notes:
@@ -130,13 +133,22 @@ smoke-test the wiring on first install.
 
 ```bash
 pip install aicheck-scan
+
+# CI / single host (same as the Action)
 aicheck example.com
+aicheck scan localhost --allow-private --fail-grade F
+
+# Local estate inventory (air-gapped; nothing phones home)
+aicheck inventory --targets targets.yaml --state-dir ./state --allow-private
 ```
 
-the package installs the `aicheck` console command — same engine the action
-and the Docker image run.
+Probe contract (exact GETs, permissions, what we miss): [`docs/PROBES.md`](docs/PROBES.md).
+Example targets file: [`examples/inventory-targets.example.yaml`](examples/inventory-targets.example.yaml).
 
-the paranoid path — pin by hash, don't trust the index:
+The package installs the `aicheck` console command — same engine the Action and
+the Docker image run.
+
+Paranoid path — pin by hash, don't trust the index:
 
 ```bash
 pip download aicheck-scan --no-deps -d /tmp/aicheck
@@ -144,7 +156,7 @@ pip install --require-hashes aicheck-scan \
   --hash sha256:<hash from the release notes>
 ```
 
-hashes are in the release notes for each version. details and verification:
+Hashes are in the release notes for each version. Details and verification:
 [docs/trust.md](docs/trust.md).
 
 ## Auditability

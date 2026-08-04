@@ -7,11 +7,14 @@ list, the database is fully open: anyone can read, modify or delete every
 stored embedding (which often contains raw document text from your RAG app).
 Qdrant ships with NO authentication by default — exposure is a config choice
 the docs warn about, not a bug.
+
+Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "qdrant"
 FIX_CARD_ID = "qdrant-exposed"
@@ -47,12 +50,16 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         )
         evidence = (
             f"GET {root.url} → 200{version_bit}; GET {collections.url} → 200{col_bit} — "
-            "no API key required. Anyone can read or delete every embedding you stored"
+            "no API key required. Anyone can read, poison, or delete every embedding "
+            "(this store may hold agent memory — see OWASP ASI06 memory poisoning)"
         )
     else:
         severity = "HIGH"
         title = "Qdrant instance exposed to the internet"
-        evidence = f"GET {root.url} → 200{version_bit} — Qdrant banner answers anyone"
+        evidence = (
+            f"GET {root.url} → 200{version_bit} — Qdrant banner answers anyone; "
+            "vector stores like this often hold agent memory (OWASP ASI06)"
+        )
 
     return [
         Finding(
@@ -63,6 +70,6 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             url="http://TARGET:6333/",
             evidence=evidence,
             fix_card_id=FIX_CARD_ID,
-            details={"version": version, "collections": col_names},
+            details=with_risk({"version": version, "collections": col_names}, AGENT_MEMORY),
         )
     ]
