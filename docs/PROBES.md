@@ -1,9 +1,19 @@
 # Probe model — what aicheck sends
 
 This document is the contract for local / air-gapped inventory runs
-(`python -m aicheck.inventory`) and the single-target CLI (`python -m aicheck.scan`).
+(`aicheck inventory`) and the single-target CLI (`aicheck scan`).
 
-## Guarantees
+## Probe classes
+
+| Class | How to enable | Traffic | Where |
+|---|---|---|---|
+| **A (default)** | always on | GET-only metadata probes | CI, inventory, hosted scanner |
+| **B (`--deep`)** | `--deep --i-own-these-targets` | Reserved for opt-in packs (auth headers, limited POSTs, future runtime checks). **No packs ship yet** — behavior matches Class A until they do | Customer-run estate only; **never** on hosted unauth.dev |
+
+Class B exists so enterprise mode can grow past GET-only without changing the
+default trust story. Selecting an unknown `--deep-packs` name fails closed.
+
+## Class A guarantees (default)
 
 | Rule | Detail |
 |---|---|
