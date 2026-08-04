@@ -52,6 +52,22 @@ def test_mcp_positive_jsonrpc():
     assert findings[0].severity == "CRITICAL"
 
 
+def test_mcp_no_fp_on_jsonrpc_mentioning_error_page():
+    """An error page / API docs mentioning JSON-RPC is not transport evidence."""
+    findings = mcp.detect(_facts(
+        _pr(8080, "/mcp", 404, "<html><body>Unknown route. This API speaks JSON-RPC; call method tools/list.</body></html>"),
+    ))
+    assert findings == []
+
+
+def test_mcp_no_fp_on_405_bodies():
+    """A 405 body is not transport evidence — the method itself failed."""
+    findings = mcp.detect(_facts(
+        _pr(8080, "/mcp", 405, _j({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Method not allowed"}})),
+    ))
+    assert findings == []
+
+
 def test_mcp_session_surface_high():
     findings = mcp.detect(_facts(_pr(3000, "/messages/", 200, "session_id is required")))
     assert len(findings) == 1
