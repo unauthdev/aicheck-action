@@ -13,23 +13,19 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
 
 from . import scan
 from .inventory_findings import enrich_finding
+from .inventory_targets import TargetLoadError, load_targets
+from .inventory_webhook import WebhookError, post_webhook
 from .probe_class import ProbeClassError, ProbeMode, resolve_probe_mode
 from .ssrf import TargetRejected
-
-_HOST_LINE = re.compile(
-    r"^(?P<host>\S+)(?:\s+(?P<owner>\S+))?(?:\s+(?P<env>\S+))?$"
-)
 
 
 def utc_now() -> str:
@@ -38,60 +34,6 @@ def utc_now() -> str:
 
 def run_id_from(ts: str) -> str:
     return ts.replace(":", "").replace("-", "")
-
-
-def load_targets(path: Path) -> list[dict[str, str | None]]:
-    """Load targets from YAML/JSON ({targets: [...]}) or plain host lines.
-
-    Each target: {host, owner?, env?}. Plain text: `host [owner] [env]`.
-    """
-    text = path.read_text(encoding="utf-8")
-    stripped = text.lstrip()
-    if stripped.startswith("{") or stripped.startswith("["):
-        data = json.loads(text)
-    elif path.suffix in {".yaml", ".yml"} or stripped.startswith("targets:"):
-        data = yaml.safe_load(text)
-    else:
-        data = None
-        targets: list[dict[str, str | None]] = []
-        for raw in text.splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            m = _HOST_LINE.match(line)
-            if not m:
-                raise ValueError(f"bad targets line: {raw!r}")
-            targets.append(
-                {
-                    "host": m.group("host"),
-                    "owner": m.group("owner"),
-                    "env": m.group("env"),
-                }
-            )
-        return targets
-
-    if isinstance(data, list):
-        rows = data
-    elif isinstance(data, dict):
-        rows = data.get("targets") or []
-    else:
-        raise ValueError("targets file must be a list or {targets: [...]}")
-
-    out: list[dict[str, str | None]] = []
-    for row in rows:
-        if isinstance(row, str):
-            out.append({"host": row, "owner": None, "env": None})
-            continue
-        if not isinstance(row, dict) or not row.get("host"):
-            raise ValueError(f"bad target row: {row!r}")
-        out.append(
-            {
-                "host": str(row["host"]),
-                "owner": (str(row["owner"]) if row.get("owner") is not None else None),
-                "env": (str(row["env"]) if row.get("env") is not None else None),
-            }
-        )
-    return out
 
 
 def load_state(state_dir: Path) -> dict[str, Any]:
@@ -329,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
         "--targets",
         required=True,
         type=Path,
-        help="YAML/JSON targets file or plain host lines (host [owner] [env])",
+        help="YAML/JSON/CSV/JSONL targets (host lines, CIDRs, or flow-log-ish exports)",
     )
     ap.add_argument(
         "--state-dir",
@@ -341,6 +283,17 @@ def main(argv: list[str] | None = None) -> int:
         "--allow-private",
         action="store_true",
         help="allow RFC1918 / localhost targets (required for internal sweeps)",
+    )
+    ap.add_argument(
+        "--max-hosts",
+        type=int,
+        default=256,
+        help="max hosts expanded from a single CIDR (default 256)",
+    )
+    ap.add_argument(
+        "--no-expand-cidrs",
+        action="store_true",
+        help="treat CIDR strings as literal hostnames (do not expand)",
     )
     ap.add_argument(
         "--services",
@@ -356,6 +309,22 @@ def main(argv: list[str] | None = None) -> int:
         "--fail-on-new",
         action="store_true",
         help="exit 1 if any NEW findings appeared since the previous run",
+    )
+    ap.add_argument(
+        "--webhook",
+        default="",
+        help="optional URL to POST drift JSON (your endpoint; never unauth.dev)",
+    )
+    ap.add_argument(
+        "--webhook-on",
+        choices=["new", "change", "always"],
+        default="new",
+        help="when to POST: new findings (default), any drift, or every run",
+    )
+    ap.add_argument(
+        "--webhook-require",
+        action="store_true",
+        help="exit 2 if the webhook is set and the POST fails",
     )
     ap.add_argument(
         "--deep",
@@ -379,8 +348,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        targets = load_targets(args.targets)
-    except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        targets = load_targets(
+            args.targets,
+            max_hosts=args.max_hosts,
+            expand_cidrs=not args.no_expand_cidrs,
+        )
+    except (OSError, TargetLoadError, json.JSONDecodeError, ValueError) as exc:
         print(f"targets error: {exc}", file=sys.stderr)
         return 2
     if not targets:
@@ -413,6 +386,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, indent=2))
     else:
         print(render_text(report), end="")
+
+    if args.webhook:
+        try:
+            result = post_webhook(args.webhook, report, on=args.webhook_on)
+            if result and args.format == "text":
+                print(
+                    f"Webhook OK (HTTP {result['status_code']}, on={result['on']}).",
+                    file=sys.stderr,
+                )
+            elif result is None and args.format == "text":
+                print(f"Webhook skipped (webhook-on={args.webhook_on}).", file=sys.stderr)
+        except WebhookError as exc:
+            print(f"webhook error: {exc}", file=sys.stderr)
+            if args.webhook_require:
+                return 2
 
     if args.fail_on_new and report["drift"]["new_count"]:
         return 1
