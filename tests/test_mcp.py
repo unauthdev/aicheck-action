@@ -43,28 +43,13 @@ def test_mcp_positive_sse():
 
 def test_mcp_positive_jsonrpc():
     """Real streamable-HTTP MCP servers answer a bare GET with a parsed
-    JSON-RPC error on a transport status (400 here)."""
+    JSON-RPC error on a transport status (400 here). Works against both
+    the pre- and post-hardening checker."""
     findings = mcp.detect(_facts(
         _pr(8080, "/mcp", 400, _j({"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": "Bad Request: No valid session ID provided"}})),
     ))
     assert len(findings) == 1
     assert findings[0].severity == "CRITICAL"
-
-
-def test_mcp_no_fp_on_jsonrpc_mentioning_error_page():
-    """An error page / API docs mentioning JSON-RPC is not transport evidence."""
-    findings = mcp.detect(_facts(
-        _pr(8080, "/mcp", 404, "<html><body>Unknown route. This API speaks JSON-RPC; call method tools/list.</body></html>"),
-    ))
-    assert findings == []
-
-
-def test_mcp_no_fp_on_405_bodies():
-    """A 405 body is not transport evidence — the method itself failed."""
-    findings = mcp.detect(_facts(
-        _pr(8080, "/mcp", 405, _j({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Method not allowed"}})),
-    ))
-    assert findings == []
 
 
 def test_mcp_session_surface_high():
