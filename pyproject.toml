@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "aicheck-scan"
 dynamic = ["version"]
-description = "Live-probe CI scanner that fails the build on exposed self-hosted AI services (Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, MCP and 10 more)."
+description = "Live-probe scanner for exposed self-hosted AI services — CI gate plus local continuous inventory (Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, MCP and more)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "unauthdev" }]
-keywords = ["security", "ci", "ai", "scanner", "sarif", "devsecops"]
+keywords = ["security", "ci", "ai", "scanner", "sarif", "devsecops", "asm", "inventory"]
 classifiers = [
     "Topic :: Security",
     "License :: OSI Approved :: MIT License",

@@ -14,6 +14,7 @@ import re
 
 from ..models import Finding, ProbeResult
 from .cvemap import cve_findings
+from .risk_classes import AGENT_RUNTIME, with_risk
 
 CHECK_ID = "gradio-langflow"
 # Both cards this module can emit — loop_qa crawls FIX_CARD_ID* attributes.
@@ -59,7 +60,7 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
                 url="http://TARGET:7860/",
                 evidence="; ".join(bits) + " — flows, credentials and API keys sit behind it",
                 fix_card_id="langflow-exposed",
-                details={"version": version},
+                details=with_risk({"version": version}, AGENT_RUNTIME),
             )
         ]
         if version:

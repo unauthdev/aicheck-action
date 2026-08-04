@@ -14,6 +14,7 @@ setup JSON) — never by port alone.
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .risk_classes import AGENT_RUNTIME, with_risk
 
 CHECK_ID = "dify"
 FIX_CARD_ID = "dify-exposed"
@@ -65,6 +66,6 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             url="http://TARGET:80/signin",
             evidence=evidence,
             fix_card_id=FIX_CARD_ID,
-            details={"setup_step": step},
+            details=with_risk({"setup_step": step}, AGENT_RUNTIME),
         )
     ]

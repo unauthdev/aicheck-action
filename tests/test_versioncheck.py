@@ -218,7 +218,12 @@ def test_flag_disables() -> None:
 def test_wrapper_prints_notice_once_to_stderr() -> None:
     with tempfile.TemporaryDirectory() as d:
         cache = _cache(d)
-        with _patched(cache, lambda: "1.2.0"):
+        # Installed package version may already be ≥ 1.2.0; mock a strictly
+        # newer PyPI release so the wrapper still has something to announce.
+        newer = "9.9.9"
+        notice = (f"v{newer} is out — pip install -U aicheck-scan "
+                  f"(release notes: https://github.com/unauthdev/aicheck-scan/releases)")
+        with _patched(cache, lambda: newer):
             buf = io.StringIO()
             real_now = versioncheck.datetime
 
@@ -233,7 +238,7 @@ def test_wrapper_prints_notice_once_to_stderr() -> None:
                     versioncheck.check_for_update()
             finally:
                 versioncheck.datetime = real_now
-        assert buf.getvalue() == NOTICE + "\n", buf.getvalue()
+        assert buf.getvalue() == notice + "\n", buf.getvalue()
         assert json.loads(cache.read_text(encoding="utf-8"))["checked"]
     print("ok — wrapper prints the single stderr line and writes the cache")
 

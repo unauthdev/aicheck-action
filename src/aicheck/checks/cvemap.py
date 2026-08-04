@@ -66,18 +66,6 @@ def _parse_version(v: str) -> tuple[int, ...] | None:
     return tuple(int(p) for p in parts)
 
 
-_PRERELEASE_RE = re.compile(r"rc|alpha|beta|dev|pre", re.IGNORECASE)
-
-
-def _prerelease_base(version_str: str) -> tuple[int, ...] | None:
-    """Release tuple preceding a pre-release marker, or None.
-    '1.65.0rc1' -> (1, 65, 0); '1.65.0' -> None."""
-    m = _PRERELEASE_RE.search(version_str or "")
-    if not m:
-        return None
-    return _parse_version(version_str[: m.start()])
-
-
 def _cmp(a: tuple[int, ...], b: tuple[int, ...]) -> int:
     n = max(len(a), len(b))
     a += (0,) * (n - len(a))
@@ -108,39 +96,18 @@ def _in_range(version: tuple[int, ...], expr: str) -> bool:
     return True
 
 
-def _range_bounds(expr: str) -> list[tuple[int, ...]]:
-    bounds = []
-    for clause in expr.split(","):
-        m = _CLAUSE_RE.match(clause.strip())
-        if m:
-            bound = _parse_version(m.group(2))
-            if bound is not None:
-                bounds.append(bound)
-    return bounds
-
-
 def match(product: str, version_str: str) -> list[dict]:
     """All cve_map entries for `product` whose affected range covers `version_str`."""
     version = _parse_version(version_str)
     if version is None:
         return []
-    # Pre-release guard: an rc/alpha/beta/dev/pre build whose release tuple
-    # exactly equals a range bound is treated as NOT matching — vendor
-    # advisories almost always exclude the pre-releases of the fixed release.
-    # False negatives are safe; false positives in CI are not.
-    base = _prerelease_base(version_str)
     hits = []
     for entry in all_entries():
         if entry.get("product") != product:
             continue
         affected = entry.get("affected") or []
         ranges = affected if isinstance(affected, list) else [affected]
-        ranges = [r for r in ranges if isinstance(r, str)]
-        if base is not None and any(
-                _cmp(base, b) == 0
-                for r in ranges for b in _range_bounds(r)):
-            continue  # pre-release exactly at a range bound — no finding
-        if any(_in_range(version, r) for r in ranges):
+        if any(isinstance(r, str) and _in_range(version, r) for r in ranges):
             hits.append(entry)
     return hits
 

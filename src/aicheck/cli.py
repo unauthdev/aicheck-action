@@ -1,19 +1,47 @@
 """Console-script entrypoint: the `aicheck` command.
 
-Thin wrapper over aicheck.scan.main so the installed package, the GitHub
-Action and the Docker image all drive the exact same engine path as
-`python -m aicheck.scan`.
+One binary, two modes (same engine, same probe model):
+
+  aicheck <target> ...              # CI / single-host scan (legacy shape)
+  aicheck scan <target> ...         # explicit scan
+  aicheck inventory --targets ...   # local continuous estate inventory
+
+GitHub Action, PyPI, and Docker all drive this entrypoint.
 """
 
 from __future__ import annotations
 
 import sys
 
-from . import scan
+
+_SUBCOMMANDS = {"scan", "inventory", "inv"}
 
 
-def main() -> int:
-    return scan.main()
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in ("-V", "--version"):
+        from . import __version__
+        print(f"aicheck {__version__}")
+        return 0
+    if argv and argv[0] in ("-h", "--help"):
+        print(
+            "usage: aicheck <target> [scan flags]\n"
+            "       aicheck scan <target> [scan flags]\n"
+            "       aicheck inventory --targets FILE --state-dir DIR [flags]\n"
+            "\n"
+            "Same engine for CI (scan) and local continuous inventory.\n"
+            "Probe contract: docs/PROBES.md · https://unauth.dev"
+        )
+        return 0
+    if argv and argv[0] in ("inventory", "inv"):
+        from .inventory import main as inventory_main
+        return inventory_main(argv[1:])
+    if argv and argv[0] == "scan":
+        from .scan import main as scan_main
+        return scan_main(argv[1:])
+    # Legacy: `aicheck <target> [flags]` — keep Action/docs working.
+    from .scan import main as scan_main
+    return scan_main(argv)
 
 
 if __name__ == "__main__":

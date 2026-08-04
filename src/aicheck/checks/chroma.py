@@ -5,11 +5,14 @@ Shares :8000 with vLLM: fingerprint strictly by content. Chroma's heartbeat
 {"nanosecond heartbeat": ...}. If /api/v1/collections or /api/v2/collections
 answers 200, every stored embedding is readable and writable by anyone —
 CRITICAL. Chroma has no auth by default.
+
+Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "chroma"
 FIX_CARD_ID = "chroma-exposed"
@@ -51,10 +54,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
                 url="http://TARGET:8000/",
                 evidence=(
                     f"GET {hb.url} → 200 (heartbeat); GET {cols.url} → 200{col_bit} — "
-                    "no auth required. Anyone can read or delete every embedding you stored"
+                    "no auth required. Anyone can read, poison, or delete every embedding "
+                    "(this store may hold agent memory — see OWASP ASI06 memory poisoning)"
                 ),
                 fix_card_id=FIX_CARD_ID,
-                details={"collections": names},
+                details=with_risk({"collections": names}, AGENT_MEMORY),
             )
         ]
     return [
@@ -64,8 +68,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             title="Chroma instance exposed to the internet",
             severity="HIGH",
             url="http://TARGET:8000/",
-            evidence=f"GET {hb.url} → 200 (Chroma heartbeat answers anyone)",
+            evidence=(
+                f"GET {hb.url} → 200 (Chroma heartbeat answers anyone) — "
+                "vector stores like this often hold agent memory (OWASP ASI06)"
+            ),
             fix_card_id=FIX_CARD_ID,
-            details={},
+            details=with_risk({}, AGENT_MEMORY),
         )
     ]

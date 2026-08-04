@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from ..models import Finding, ProbeResult
 from .cvemap import cve_findings
+from .risk_classes import AGENT_TRACES, with_risk
 
 CHECK_ID = "langfuse"
 FIX_CARD_ID = "langfuse-exposed"
@@ -33,10 +34,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     signup_open = signup is not None and signup.ok and "langfuse" in signup.body.lower()
     if signup_open:
         severity = "HIGH"
-        title = "Langfuse exposed with open sign-up page"
+        title = "Langfuse exposed with open sign-up — agent traces readable"
         evidence = (
             f"GET {signup.url} → 200{version_bit} — the sign-up page is reachable, "
-            "so anyone on the internet can create an account on your instance"
+            "so anyone on the internet can create an account and read traces "
+            "(prompts, tool calls, and often agent memory/state)"
         )
     else:
         severity = "MEDIUM"
@@ -46,7 +48,10 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             bits.append(f"GET {health.url} → {health.status_code}{version_bit}")
         if root is not None and root.ok:
             bits.append("Langfuse fingerprint on /")
-        evidence = "; ".join(bits) or "Langfuse fingerprint matched on :3000"
+        evidence = (
+            ("; ".join(bits) or "Langfuse fingerprint matched on :3000")
+            + " — traces often retain prompts, tool calls, and agent session state"
+        )
 
     findings = [
         Finding(
@@ -57,7 +62,10 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             url=f"http://TARGET:3000/",
             evidence=evidence,
             fix_card_id=FIX_CARD_ID,
-            details={"version": ver_str, "signup_open": signup_open},
+            details=with_risk(
+                {"version": ver_str, "signup_open": signup_open},
+                AGENT_TRACES,
+            ),
         )
     ]
     if ver_str:

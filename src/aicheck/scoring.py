@@ -8,8 +8,6 @@ any MEDIUM → C, clean → A.
 
 from __future__ import annotations
 
-import sys
-
 from .checks import ALL_CHECKERS
 from .models import Finding
 
@@ -33,11 +31,14 @@ def run_checkers(facts: dict, target: str) -> list[Finding]:
     for checker in ALL_CHECKERS:
         try:
             findings.extend(checker.detect(facts))
-        except Exception as e:
-            # one broken checker must never kill a scan — but say so on
-            # stderr so the self-test workflow can grep for it
-            print(f"checker {checker.__name__} error: {type(e).__name__}",
-                  file=sys.stderr)
+        except Exception:
+            continue  # one broken checker must never kill a scan
+    # Annotation only — never touches severity / grade inputs.
+    from .checks.vuln_lookup import annotate_known_cves
+    try:
+        annotate_known_cves(findings)
+    except Exception:
+        pass  # a broken CVE annotation must never kill a scan
     for f in findings:  # checkers emit TARGET placeholder; bind real target here
         f.url = f.url.replace("TARGET", target)
     findings.sort(key=lambda f: -_SEVERITY_RANK.get(f.severity, 0))

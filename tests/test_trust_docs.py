@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,7 +75,7 @@ def test_version_single_sourced() -> None:
     m = re.search(r'__version__\s*=\s*"([^"]+)"', init)
     assert m, "__version__ not found in src/aicheck/__init__.py"
     out = subprocess.run(
-        ["aicheck", "--version"],
+        [sys.executable, "-m", "aicheck.cli", "--version"],
         capture_output=True, text=True,
     )
     cli_out = (out.stdout + out.stderr).strip()

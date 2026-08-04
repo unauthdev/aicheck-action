@@ -14,11 +14,6 @@ Trust-surface flags:
   --verbose   log every outbound connection to stderr as it happens, with the
               pinned IP actually dialed, plus a closing summary line.
 
-Text output ends with one door line: fix cards + a playground deep link on
-findings, the CI-action link when clean (grade/slugs only, never the target).
-After a successful scan it checks PyPI weekly for a newer version — disable
-with --no-version-check or AICHECK_NO_VERSION_CHECK=1.
-
 Exit codes: 0 = pass, 1 = grade at or worse than --fail-grade, 2 = target,
 usage, or engine error (an engine crash is never reported as a grade).
 """
@@ -34,10 +29,13 @@ import sys
 
 import httpx
 
-from . import __version__, recon, sarif, ssrf, versioncheck
+from . import __version__, recon, sarif, ssrf
 from .scoring import grade, run_checkers
 
 _BADNESS = {"A": 0, "C": 1, "D": 2, "F": 3}
+
+CLEAN_DOOR = ("clean. keep it that way: the CI action watches every PR → "
+              "https://github.com/unauthdev/aicheck-scan")
 
 
 def resolve_internal(raw: str) -> tuple[str, list[str]]:
@@ -92,21 +90,18 @@ async def scan(target: str, allow_private: bool = False,
     return grade(findings), [f.to_dict() for f in findings]
 
 
-CLEAN_DOOR = ("clean. keep it that way: the CI action watches every PR → "
-              "https://github.com/unauthdev/aicheck-scan")
-
-
 def _door_line(g: str, findings: list[dict]) -> str:
-    """The one line every text output ends with. Findings → first fix card +
-    the playground deep link; clean → the CI action. Grade, count and product
-    slugs only — never the target."""
+    """Closing line for text output. Uses playground deep link when the
+    Action-only render module is present; otherwise a plain fix-card line."""
     if not findings:
         return CLEAN_DOOR
-    # late import: aicheck.render imports render_text from this module
-    from .render import deep_link
-    return (f"fix cards: https://unauth.dev/fixes/{findings[0]['fix_card_id']} — "
-            f"see your stack the way the internet sees it: "
-            f"{deep_link(g, findings, source='cli')}")
+    try:
+        from .render import deep_link
+        return (f"fix cards: https://unauth.dev/fixes/{findings[0]['fix_card_id']} — "
+                f"see your stack the way the internet sees it: "
+                f"{deep_link(g, findings, source='cli')}")
+    except ImportError:
+        return f"fix cards: https://unauth.dev/fixes/{findings[0]['fix_card_id']}"
 
 
 def render_text(target: str, g: str, findings: list[dict],
@@ -114,6 +109,9 @@ def render_text(target: str, g: str, findings: list[dict],
     lines = [f"aicheck — {target} → grade {g} ({len(findings)} findings)"]
     for f in findings:
         lines.append(f"  {f['severity']:8} {f['product']}: {f['title']}")
+        known = (f.get("details") or {}).get("known_cves")
+        if known:
+            lines.append(f"           {known}")
         lines.append(f"           fix: https://unauth.dev/fixes/{f['fix_card_id']}")
     if not findings:
         if services_filter:
@@ -129,7 +127,7 @@ def render_text(target: str, g: str, findings: list[dict],
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="python -m aicheck.scan",
+        prog="aicheck scan",
         description="Live-probe a target for exposed self-hosted AI services.")
     ap.add_argument("target", help="host to probe (no port — we probe the well-known ones)")
     ap.add_argument("--format", choices=["text", "json", "sarif"], default="text")
@@ -154,8 +152,6 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.dry_run:
-        # Trust surface: the full request list, sent to no one. No target
-        # validation, no DNS, no sockets — any string is a fine target here.
         urls = sorted(
             f"{'https' if port == 443 else 'http'}://{args.target}:{port}{path}"
             for port, path in recon.probe_plan()
@@ -195,9 +191,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(sarif.to_sarif(args.target, g, findings), indent=2))
     else:
         print(render_text(args.target, g, findings, services_filter=services), end="")
-    # weekly PyPI version check — after output, failure-invisible, off on
-    # --dry-run (returns above) and --version (exits in argparse)
-    versioncheck.check_for_update(disabled=args.no_version_check)
+
+    try:
+        from . import versioncheck
+        versioncheck.check_for_update(disabled=args.no_version_check)
+    except ImportError:
+        pass
     return 1 if _BADNESS[g] >= _BADNESS[args.fail_grade] else 0
 
 
