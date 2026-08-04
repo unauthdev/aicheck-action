@@ -8,7 +8,7 @@
 
 **Find exposed self-hosted AI services — in CI, or continuously across your estate.**
 
-One engine, three doors (PyPI / Docker / GitHub Action):
+One engine, four doors (pip / GitHub Action / Docker / site):
 
 - **`aicheck <target>`** — CI feeder: fail the build if a PR ships an unauthenticated AI service
 - **`aicheck inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `still_open`), no phone-home
@@ -162,6 +162,20 @@ pip install --require-hashes aicheck-scan \
 
 Hashes are in the release notes for each version. Details and verification:
 [docs/trust.md](docs/trust.md).
+
+## Air-gapped / offline
+
+The only call the engine makes beyond your target is an optional weekly
+PyPI version check. To run fully offline — air-gapped networks, locked-down
+runners — disable it either way:
+
+```bash
+aicheck example.com --no-version-check        # per run
+export AICHECK_NO_VERSION_CHECK=1             # per environment
+```
+
+With that off (and `--dry-run` to prove it), nothing is dialed except the
+hosts you name. Inventory mode is offline by design.
 
 ## Auditability
 

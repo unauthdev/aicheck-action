@@ -13,7 +13,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    # nothing ships untested: the publish jobs need this gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: install + run the test suite
+        run: |
+          python -m pip install --quiet . pytest
+          python -m pytest tests -q
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       id-token: write      # for the SLSA provenance attestation
@@ -51,6 +69,33 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+
+  release-notes-hashes:
+    # appends the dist SHA256 sums to the release notes so hash-pinned
+    # installs (pip --require-hashes, see docs/trust.md) have something
+    # verifiable to pin against. soft-fail by design: the PyPI publish is
+    # what matters — a notes hiccup must never block or fail it.
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # gh release edit
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: append SHA256 sums to the release notes
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          sums=$(cd dist && sha256sum * | sort)
+          body=$(gh release view "$tag" --json body -q .body)
+          printf '%s\n\n## SHA256\n\n```\n%s\n```\n' "$body" "$sums" > notes.md
+          gh release edit "$tag" --notes-file notes.md
 
   publish-pypi:
     if: github.event_name == 'release'
