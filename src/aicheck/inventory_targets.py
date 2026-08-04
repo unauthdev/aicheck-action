@@ -40,13 +40,20 @@ def looks_like_cidr(value: str) -> bool:
 
 def expand_cidr(cidr: str, *, max_hosts: int) -> list[str]:
     net = ipaddress.ip_network(cidr, strict=False)
-    # Skip network/broadcast for IPv4 if usable hosts exist
-    hosts = list(net.hosts()) if net.version == 4 and net.num_addresses > 2 else list(net)
-    if len(hosts) > max_hosts:
+    # Count before materializing: list(net.hosts()) on a /8 builds 16.7M
+    # objects before any cap check could run.
+    count = (
+        net.num_addresses - 2
+        if net.version == 4 and net.num_addresses > 2
+        else net.num_addresses
+    )
+    if count > max_hosts:
         raise TargetLoadError(
-            f"CIDR {cidr} expands to {len(hosts)} hosts; "
+            f"CIDR {cidr} expands to {count} hosts; "
             f"max is {max_hosts} (pass --max-hosts to raise, or list hosts explicitly)"
         )
+    # Skip network/broadcast for IPv4 if usable hosts exist
+    hosts = list(net.hosts()) if net.version == 4 and net.num_addresses > 2 else list(net)
     return [str(h) for h in hosts]
 
 

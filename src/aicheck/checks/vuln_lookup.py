@@ -13,7 +13,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from .cvemap import _in_range, _parse_version
+from .cvemap import in_range, parse_version
 from ..models import Finding
 
 LOOKUP_PATH = (
@@ -107,14 +107,14 @@ def _outer_parens_wrap(expr: str) -> bool:
     return False
 
 
-def _eval_atom(atom: str, version: tuple[int, ...]) -> bool | None:
+def _eval_atom(atom: str, version: tuple[tuple[int, ...], int, int]) -> bool | None:
     """True/False if parseable; None if the atom is not a version compare."""
     m = _ATOM_RE.match(atom.strip())
     if not m:
         return None
     op, raw = m.groups()
     if op == "!=":
-        bound = _parse_version(raw)
+        bound = parse_version(raw)
         if bound is None:
             return None
         from .cvemap import _cmp
@@ -123,12 +123,12 @@ def _eval_atom(atom: str, version: tuple[int, ...]) -> bool | None:
         op = "=="
     if not raw:
         return False
-    return _in_range(version, f"{op} {raw}")
+    return in_range(version, f"{op} {raw}")
 
 
 def rule_matches(rule: str, version_str: str) -> bool:
     """Evaluate a vuln_lookup rule against an extracted version string."""
-    version = _parse_version(version_str)
+    version = parse_version(version_str)
     if version is None:
         return False
     rule = (rule or "").strip()
@@ -208,11 +208,40 @@ def format_line(hits: list[dict]) -> str:
     return f"{n} {label} · worst: {cve}"
 
 
-def annotate_known_cves(findings: list[Finding]) -> None:
-    """Mutate findings in place: set details['known_cves'] when applicable.
+# details["cves"] is capped so a noisy version can't bloat the finding;
+# details["known_cve_count"] always reports the true total.
+_MAX_CVES = 10
 
-    Only findings with a non-empty details['version']. No version → no line.
-    Does not change severity, title, or check_id.
+
+def _structured(hits: list[dict]) -> list[dict]:
+    """SIEM-mappable view of the matched entries: only fields that actually
+    exist in the vendored vuln_lookup.json. Worst first, capped."""
+    ranked = sorted(
+        hits,
+        key=lambda e: (_sev_rank(e.get("severity")), _cve_sort_key(str(e.get("cve") or ""))),
+        reverse=True,
+    )
+    out = []
+    for e in ranked[:_MAX_CVES]:
+        refs = e.get("references") or []
+        out.append(
+            {
+                "cve": str(e.get("cve") or "").upper(),
+                "severity": str(e.get("severity") or ""),
+                "rule": str(e.get("rule") or ""),
+                "summary": str(e.get("summary") or ""),
+                "reference_url": str(refs[0]) if refs else None,
+            }
+        )
+    return out
+
+
+def annotate_known_cves(findings: list[Finding]) -> None:
+    """Mutate findings in place: set details['known_cves'] / details['cves']
+    when applicable.
+
+    Only findings with a non-empty details['version']. No version → no
+    annotation. Does not change severity, title, or check_id.
     """
     for f in findings:
         ver = (f.details or {}).get("version")
@@ -227,3 +256,4 @@ def annotate_known_cves(findings: list[Finding]) -> None:
         f.details["known_cves"] = line
         f.details["known_cve_count"] = len(hits)
         f.details["known_cve_worst"] = line.rsplit("worst: ", 1)[-1]
+        f.details["cves"] = _structured(hits)

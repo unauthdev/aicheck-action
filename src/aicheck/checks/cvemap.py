@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -52,34 +51,60 @@ def entry_for_card(card_id: str) -> dict | None:
     return None
 
 
-@lru_cache(maxsize=1)
 def all_entries() -> list[dict]:
+    """Load the map fresh on every call — the file is small, and a cached
+    copy would never pick up edits in a long-running process."""
     with open(MAP_PATH, "r", encoding="utf-8") as fh:
         return yaml.safe_load(fh) or []
 
 
-def _parse_version(v: str) -> tuple[int, ...] | None:
-    """'v2.95.11' -> (2, 95, 11). Numeric runs are kept ('1.2rc1' -> (1, 2, 1))."""
-    parts = re.findall(r"\d+", v or "")
+_PRE_RE = re.compile(
+    r"^(?P<release>[\d.]+?)(?P<pre>a|alpha|b|beta|rc|pre|preview)(?P<num>\d*)$",
+    re.IGNORECASE,
+)
+
+
+def parse_version(v: str) -> tuple[tuple[int, ...], int, int] | None:
+    """'v2.95.11' -> ((2, 95, 11), 0, 0).
+
+    A pre-release suffix (rc/a/b/alpha/beta/pre/preview + optional number)
+    is split off and marked with a -1 flag so it sorts BEFORE the release:
+    '1.2rc1' -> ((1, 2), -1, 1) < ((1, 2), 0, 0) = '1.2'. Keeping the
+    suffix digits in the numeric runs (the old behaviour) sorted '1.2rc1'
+    as (1, 2, 1) — after '1.2' — letting a pre-release of a fixed version
+    escape a '<fixed' range.
+    """
+    raw = (v or "").strip().lstrip("vV")
+    m = _PRE_RE.match(raw)
+    if m:
+        release, pre = m.group("release"), (-1, int(m.group("num") or 0))
+    else:
+        release, pre = raw, (0, 0)
+    parts = re.findall(r"\d+", release)
     if not parts:
         return None
-    return tuple(int(p) for p in parts)
+    return (tuple(int(p) for p in parts), *pre)
 
 
-def _cmp(a: tuple[int, ...], b: tuple[int, ...]) -> int:
-    n = max(len(a), len(b))
-    a += (0,) * (n - len(a))
-    b += (0,) * (n - len(b))
-    return (a > b) - (a < b)
+_Version = tuple[tuple[int, ...], int, int]
 
 
-def _in_range(version: tuple[int, ...], expr: str) -> bool:
+def _cmp(a: _Version, b: _Version) -> int:
+    (ra, pa, na), (rb, pb, nb) = a, b
+    n = max(len(ra), len(rb))
+    ra += (0,) * (n - len(ra))
+    rb += (0,) * (n - len(rb))
+    x, y = (ra, pa, na), (rb, pb, nb)
+    return (x > y) - (x < y)
+
+
+def in_range(version: _Version, expr: str) -> bool:
     for clause in expr.split(","):
         m = _CLAUSE_RE.match(clause.strip())
         if not m:
             return False
         op, raw = m.groups()
-        bound = _parse_version(raw)
+        bound = parse_version(raw)
         if bound is None:
             return False
         c = _cmp(version, bound)
@@ -96,18 +121,24 @@ def _in_range(version: tuple[int, ...], expr: str) -> bool:
     return True
 
 
+# Private aliases kept for callers that imported the old names.
+_parse_version = parse_version
+_in_range = in_range
+
+
 def match(product: str, version_str: str) -> list[dict]:
     """All cve_map entries for `product` whose affected range covers `version_str`."""
-    version = _parse_version(version_str)
+    version = parse_version(version_str)
     if version is None:
         return []
+    product = product.lower()  # hand-typed checker literals must match case-insensitively
     hits = []
     for entry in all_entries():
-        if entry.get("product") != product:
+        if str(entry.get("product", "")).lower() != product:
             continue
         affected = entry.get("affected") or []
         ranges = affected if isinstance(affected, list) else [affected]
-        if any(isinstance(r, str) and _in_range(version, r) for r in ranges):
+        if any(isinstance(r, str) and in_range(version, r) for r in ranges):
             hits.append(entry)
     return hits
 

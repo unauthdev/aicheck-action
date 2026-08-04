@@ -14,7 +14,8 @@ LEVEL = {"CRITICAL": "error", "HIGH": "warning", "MEDIUM": "note"}
 BASE_URL = "https://unauth.dev"
 
 
-def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.0") -> dict:
+def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.0",
+             coverage: dict | None = None) -> dict:
     rules = {}
     for f in findings:
         cid = f["check_id"]
@@ -42,6 +43,9 @@ def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.
                 "logicalLocations": [{"name": f["product"], "kind": "service"}],
             }],
         })
+    properties = {"target": target, "grade": grade}
+    if coverage is not None:
+        properties["coverage"] = coverage
     return {
         "$schema": SCHEMA,
         "version": "2.1.0",
@@ -55,6 +59,6 @@ def to_sarif(target: str, grade: str, findings: list[dict], version: str = "0.1.
                 },
             },
             "results": results,
-            "properties": {"target": target, "grade": grade},
+            "properties": properties,
         }],
     }

@@ -8,7 +8,10 @@ database queries — whatever the server exposes).
 Fingerprint (GET-only — no JSON-RPC tools/list POST):
 - GET /sse or /mcp/sse → SSE stream, or 406 "must accept text/event-stream"
   (CRITICAL — tool transport open; nuclei exposed-mcp-sse-server parity)
-- GET /mcp → JSON-RPC-shaped body without auth (CRITICAL)
+- GET /mcp → parsed JSON-RPC body (a "jsonrpc" key in a JSON response) on a
+  transport status (200/400/406), or 406 Accept negotiation mentioning
+  text/event-stream (CRITICAL). Substring mentions of "jsonrpc" in an error
+  page or API docs do NOT count; 404/405 bodies are not transport evidence.
 - GET /messages/ → "session_id is required" (HIGH — MCP session surface)
 - GET /.well-known/mcp*, /.well-known/mcp-server → discovery card/manifest
   (MEDIUM alone; CRITICAL if the card ships a static tools catalog — that is
@@ -64,12 +67,21 @@ def _sse_hit(p: ProbeResult | None) -> bool:
 
 
 def _jsonrpc_hit(p: ProbeResult | None) -> bool:
+    """Open streamable-HTTP transport. Only 200/400/406 count as transport
+    evidence (404/405 bodies say nothing about the transport), and the body
+    must parse as JSON carrying a "jsonrpc" key — substring mentions in an
+    error page or API docs are not evidence. A 406 Accept-negotiation body
+    naming text/event-stream is transport evidence even as plain text."""
     if p is None or _auth_wall(p):
         return False
-    if p.status_code not in (200, 400, 404, 405, 406):
+    if p.status_code not in (200, 400, 406):
         return False
-    body = p.body.lower()
-    return "jsonrpc" in body and ("method" in body or "mcp" in body or "server error" in body)
+    data = p.json()
+    if isinstance(data, dict) and "jsonrpc" in data:
+        return True
+    if p.status_code == 406 and "text/event-stream" in p.body.lower():
+        return True
+    return False
 
 
 def _session_hit(p: ProbeResult | None) -> bool:

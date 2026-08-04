@@ -4,8 +4,11 @@ Langflow fingerprints: GET /api/v1/version or /health returns Langflow JSON,
 or the page names Langflow. Versions < 1.9.0 match CVE-2026-33017
 (CRITICAL, already in the CVE map).
 Gradio fingerprints: the page carries Gradio markers (window.gradio_config,
-"gradio" assets) and GET /config returns the app config. An exposed Gradio
-app is your ML demo on the public internet, often with file upload. HIGH.
+"gradio" assets), or GET /config returns a Gradio-shaped app config — a JSON
+object with at least two of Gradio's config keys (components, dependencies,
+mode, layout, blocks). Any JSON object at /config is NOT enough on its own.
+An exposed Gradio app is your ML demo on the public internet, often with
+file upload. HIGH.
 """
 
 from __future__ import annotations
@@ -69,13 +72,19 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
 
     config = facts.get("7860:/config")
     config_j = config.json() if config is not None and config.ok else None
-    gradio_hit = "gradio" in root_body or isinstance(config_j, dict)
+    # Any JSON object at /config is too weak — require Gradio's config shape.
+    gradio_config_keys = ("components", "dependencies", "mode", "layout", "blocks")
+    config_gradio = (
+        isinstance(config_j, dict)
+        and sum(1 for k in gradio_config_keys if k in config_j) >= 2
+    )
+    gradio_hit = "gradio" in root_body or config_gradio
     if gradio_hit:
         bits = []
         if root is not None and root.ok:
             bits.append(f"GET {root.url} → 200 (Gradio app)")
-        if isinstance(config_j, dict):
-            bits.append("GET /config → 200")
+        if config_gradio:
+            bits.append("GET /config → 200 (Gradio app config)")
         return [
             Finding(
                 check_id="gradio",

@@ -2,8 +2,10 @@
 
 CI-shaped wrapper over the live-probe pipeline (recon → checkers → grade).
 Answers one question in a build job: "did we just ship an AI service with no
-auth?" Runs entirely against the given target — no database, no emails, no
-phone-home of any kind.
+auth?" Runs entirely against the given target — no database, no emails. One
+documented exception: after results are printed, a weekly PyPI version check
+(opt out: --no-version-check or AICHECK_NO_VERSION_CHECK=1; inventory mode
+never performs it).
 
   python -m aicheck.scan localhost --allow-private
   python -m aicheck.scan example.com --format sarif --fail-grade C > results.sarif
@@ -74,8 +76,10 @@ def _services_wanted(finding, wanted: set[str]) -> bool:
 async def scan(target: str, allow_private: bool = False,
                services: list[str] | None = None,
                transport: httpx.AsyncBaseTransport | None = None,
-               log: recon.ConnectLog | None = None) -> tuple[str, list[dict]]:
-    """Returns (grade, findings). Raises ssrf.TargetRejected on bad targets.
+               log: recon.ConnectLog | None = None) -> tuple[str, list[dict], dict]:
+    """Returns (grade, findings, coverage). Raises ssrf.TargetRejected on bad
+    targets. coverage (recon.coverage_stats) tells the caller how much of the
+    probe plan was answered — a dead/filtered host grades A on partial facts.
     `log`, when given, receives (method, logical_url, dialed_address) before
     every outbound request — the --verbose connection log."""
     if allow_private:
@@ -83,11 +87,12 @@ async def scan(target: str, allow_private: bool = False,
     else:
         host, ips = ssrf.validate_target(target)
     facts = await recon.gather_facts(host, transport=transport, pinned_ips=ips, log=log)
+    coverage = recon.coverage_stats(facts)
     findings = run_checkers(facts, host)
     if services:
         wanted = {s.lower() for s in services}
         findings = [f for f in findings if _services_wanted(f, wanted)]
-    return grade(findings), [f.to_dict() for f in findings]
+    return grade(findings), [f.to_dict() for f in findings], coverage
 
 
 def _door_line(g: str, findings: list[dict]) -> str:
@@ -105,8 +110,14 @@ def _door_line(g: str, findings: list[dict]) -> str:
 
 
 def render_text(target: str, g: str, findings: list[dict],
-                services_filter: list[str] | None = None) -> str:
+                services_filter: list[str] | None = None,
+                coverage: dict | None = None) -> str:
     lines = [f"aicheck — {target} → grade {g} ({len(findings)} findings)"]
+    if coverage and coverage.get("partial"):
+        lines.append(
+            f"note: partial scan — {coverage['probes_answered']}/{coverage['probes_total']} "
+            "probes answered (host may be filtered)"
+        )
     for f in findings:
         lines.append(f"  {f['severity']:8} {f['product']}: {f['title']}")
         known = (f.get("details") or {}).get("known_cves")
@@ -169,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
 
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
     try:
-        g, findings = asyncio.run(
+        g, findings, coverage = asyncio.run(
             scan(args.target, allow_private=args.allow_private, services=services, log=log))
     except ssrf.TargetRejected as exc:
         print(f"target rejected: {exc}", file=sys.stderr)
@@ -182,15 +193,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"# {len(dialed)} connections, all to {args.target} "
               f"(IPs: {', '.join(sorted(set(dialed)))})", file=sys.stderr)
 
-    payload = {"target": args.target, "grade": g, "findings": findings}
+    payload = {"target": args.target, "grade": g, "findings": findings, "coverage": coverage}
     if services:
         payload["services_filter"] = services
     if args.format == "json":
         print(json.dumps(payload, indent=2))
     elif args.format == "sarif":
-        print(json.dumps(sarif.to_sarif(args.target, g, findings), indent=2))
+        print(json.dumps(sarif.to_sarif(args.target, g, findings, coverage=coverage), indent=2))
     else:
-        print(render_text(args.target, g, findings, services_filter=services), end="")
+        print(render_text(args.target, g, findings, services_filter=services, coverage=coverage), end="")
 
     try:
         from . import versioncheck

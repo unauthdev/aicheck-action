@@ -32,7 +32,7 @@ default trust story. Selecting an unknown `--deep-packs` name fails closed.
 
 - Outbound TCP from the runner to the **targets you listed** on the well-known ports below.
 - No cloud roles, no agent, no privileged host access.
-- For internal ranges: pass `--allow-private` (RFC1918 / localhost / link-local).
+- For internal ranges: pass `--allow-private --i-own-these-targets` (RFC1918 / localhost / link-local — the pair acknowledges you own the sweep targets).
 
 ## Ports and paths probed
 
@@ -44,13 +44,14 @@ Source of truth: `aicheck/recon.py` → `PROBES`.
 | 11434 | `/`, `/api/version`, `/api/tags` | Ollama |
 | 5678 | `/`, `/rest/settings` | n8n |
 | 8080 | `/`, `/api/config`, `/v1/models`, `/v1/meta`, `/v1/schema`, MCP paths, … | Open WebUI, Weaviate, OpenAI-compat, MCP, … |
-| 8000 | `/v1/models`, Chroma heartbeats/collections, OpenAPI/docs, MCP, … | vLLM, Chroma, LangServe, AutoGen, … |
+| 8000 | `/v1/models`, Chroma heartbeats/collections, OpenAPI/docs, MCP, … | vLLM, Chroma, LangServe, AutoGen, Attu (Milvus UI), … |
 | 8188 | `/`, `/system_stats`, `/api/manager/version` | ComfyUI |
 | 8265 | `/`, `/api/version`, `/api/jobs/`, `/nodes` | Ray |
 | 6333 | `/`, `/collections` | Qdrant |
+| 9091 | `/healthz`, `/` | Milvus (Server-header fingerprint) |
 | 8888 | `/`, `/api/status`, `/api/kernels` | Jupyter |
 | 7860 | `/`, `/config`, `/api/v1/version`, `/health` | Gradio / Langflow |
-| 3000–3001 | health/version/auth/MCP/well-known | Langfuse, Flowise, Dify UI, MCP, … |
+| 3000–3001 | health/version/auth/MCP/well-known | Langfuse, Flowise, Dify UI, MCP, Attu (Milvus UI), … |
 | 5000–5001 | `/`, `/version`, Dify console, MCP | MLflow, Dify API, MCP |
 | 4000 | `/v1/models`, `/health`, OpenAPI | LiteLLM / OpenAI-compat |
 | 443 | `/v1/models`, `/.well-known/mcp*` | HTTPS OpenAI-compat / MCP discovery |

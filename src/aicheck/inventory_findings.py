@@ -69,7 +69,7 @@ def enrich_finding(
     version = details.get("version") or None
     fix_url = f"https://unauth.dev/fixes/{fix_card}" if fix_card else None
 
-    # Ticket / SIEM aliases — same values, names teams already map in workflows.
+    # Ticket / SIEM description — one prose block teams map in workflows.
     description_parts = [
         str(title or ""),
         f"Asset: {host}",
@@ -86,15 +86,15 @@ def enrich_finding(
     if fix_url:
         description_parts.append(f"Remediation: {fix_url}")
 
+    # Canonical field names (schema v1): finding_id, host, env. No aliases —
+    # additive-only within v1, renames bump schema_version.
     out: dict[str, Any] = {
         "finding_id": fid,
-        "id": fid,
         "check_id": finding.get("check_id"),
         "product": product,
         "title": title,
         "severity": severity,
         "host": host,
-        "asset": host,
         "url": finding.get("url"),
         "evidence": finding.get("evidence"),
         "how_produced": how,
@@ -104,7 +104,6 @@ def enrich_finding(
         "references": [u for u in (fix_url, details.get("reference_url")) if u],
         "owner": owner,
         "env": env,
-        "environment": env,
         "version": version,
         "cves": cves,
         "risk_class": details.get("risk_class"),

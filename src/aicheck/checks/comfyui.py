@@ -1,12 +1,16 @@
 """ComfyUI :8188 — UI + system stats exposed.
 
-Fingerprint: GET / serves the ComfyUI front-end, or GET /system_stats returns
-its system/devices JSON. That stats endpoint is a hardware leak: it discloses
-GPU model, VRAM, driver/CUDA runtime and Python version to anyone. An open
-ComfyUI accepts workflow uploads that execute arbitrary pipelines → CRITICAL.
+Fingerprint (a page merely mentioning ComfyUI is NOT enough for the top
+grade — :8188 is not exclusive and the string appears in docs/tutorials):
+- GET /system_stats returns ComfyUI's {"system": ..., "devices": ...} shape,
+  or GET /api/manager/version answers a ComfyUI-Manager version → CRITICAL.
+  The stats endpoint is also a hardware leak: GPU model, VRAM, driver/CUDA
+  runtime and Python version to anyone. An open ComfyUI accepts workflow
+  uploads that execute arbitrary pipelines.
+- Only the "comfyui" string in the root page, with no stats/manager
+  corroboration → MEDIUM (exposed UI, thin evidence).
 
-Also fingerprints the ComfyUI-Manager extension via GET /api/manager/version
-(versioned, and versions < 3.38 are CVE-2025-67303 unauth RCE).
+ComfyUI-Manager versions < 3.38 are CVE-2025-67303 unauth RCE (CVE map).
 """
 
 from __future__ import annotations
@@ -47,8 +51,12 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
 
     stats_j = stats.json() if stats is not None and stats.ok else None
     stats_match = isinstance(stats_j, dict) and "system" in stats_j and "devices" in stats_j
-    fingerprinted = (root is not None and root.ok and "comfyui" in root.body.lower()) or stats_match
-    if not fingerprinted:
+    root_hit = root is not None and root.ok and "comfyui" in root.body.lower()
+    manager_ver = _manager_version(manager)
+    # Strong identity: ComfyUI-shaped /system_stats or the ComfyUI-Manager
+    # version endpoint answering. The bare "comfyui" string is only MEDIUM.
+    strong = stats_match or bool(manager_ver)
+    if not (strong or root_hit):
         return []
 
     evidence_bits = []
@@ -67,23 +75,49 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         if hw:
             leak += "; " + ", ".join(f"{k} {v}" for k, v in hw.items())
         evidence_bits.append(f"GET {stats.url} → 200 ({leak})")
-    if root is not None and root.ok:
+    if root_hit:
         evidence_bits.append("ComfyUI web UI reachable on /")
 
-    findings = [
-        Finding(
-            check_id=CHECK_ID,
-            product="ComfyUI",
-            title="ComfyUI exposed — workflow upload and system stats open without authentication",
-            severity="CRITICAL",
-            url=f"http://TARGET:8188/",
-            evidence="; ".join(evidence_bits),
-            fix_card_id=FIX_CARD_ID,
-            details={"hardware": hw},
+    if strong:
+        if manager_ver and not stats_match:
+            evidence_bits.append(
+                f"GET {manager.url} → 200 (ComfyUI-Manager version {manager_ver})"
+            )
+        title = (
+            "ComfyUI exposed — workflow upload and system stats open without authentication"
+            if stats_match
+            else "ComfyUI exposed — ComfyUI-Manager answers without authentication"
         )
-    ]
+        findings = [
+            Finding(
+                check_id=CHECK_ID,
+                product="ComfyUI",
+                title=title,
+                severity="CRITICAL",
+                url=f"http://TARGET:8188/",
+                evidence="; ".join(evidence_bits),
+                fix_card_id=FIX_CARD_ID,
+                details={"hardware": hw},
+            )
+        ]
+    else:
+        findings = [
+            Finding(
+                check_id=CHECK_ID,
+                product="ComfyUI",
+                title="ComfyUI web UI exposed to the internet",
+                severity="MEDIUM",
+                url=f"http://TARGET:8188/",
+                evidence=(
+                    "; ".join(evidence_bits)
+                    + " — page names ComfyUI but /system_stats and /api/manager/version "
+                    "did not corroborate; likely an exposed UI, evidence is thin"
+                ),
+                fix_card_id=FIX_CARD_ID,
+                details={"hardware": hw},
+            )
+        ]
 
-    manager_ver = _manager_version(manager)
     if manager_ver:
         findings[0].details["manager_version"] = manager_ver
         findings += cve_findings("ComfyUI-Manager", manager_ver, "http://TARGET:8188/")

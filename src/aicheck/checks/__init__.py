@@ -14,6 +14,7 @@ from . import (
     langfuse,
     langserve,
     mcp,
+    milvus,
     n8n,
     ollama,
     openai_compat,
@@ -30,7 +31,7 @@ from . import (
 ALL_CHECKERS = [
     ollama, n8n, openwebui, vllm, langfuse, comfyui, ray, dify, qdrant,
     anythingllm, jupyter, gradio_langflow, flowise, chroma, weaviate, mcp,
-    langserve, openclaw, openhands, autogen_studio, crewai, redis,
+    langserve, openclaw, openhands, autogen_studio, crewai, redis, milvus,
     openai_compat,  # after product checkers — generic /v1/models leftover
     aig_fingerprints,  # additive GET fingerprints (skip when primary already hit)
 ]

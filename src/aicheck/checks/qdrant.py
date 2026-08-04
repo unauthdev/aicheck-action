@@ -36,7 +36,11 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     col_names: list[str] = []
     if isinstance(cols_j, dict):
         try:
-            col_names = [c.get("name", "?") for c in cols_j["result"]["collections"]][:5]
+            col_names = [
+                c.get("name", "?")
+                for c in cols_j["result"]["collections"]
+                if isinstance(c, dict)
+            ][:5]
         except (KeyError, TypeError):
             col_names = []
 

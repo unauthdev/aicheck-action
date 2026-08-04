@@ -66,6 +66,9 @@ PROBES: list[tuple[int, str]] = [
     # Qdrant
     (6333, "/"),
     (6333, "/collections"),
+    # Milvus (healthz :9091 — Server: Milvus/<version> header fingerprints)
+    (9091, "/healthz"),
+    (9091, "/"),
     # AnythingLLM
     (3001, "/"),
     (3001, "/api/ping"),
@@ -141,6 +144,18 @@ PROBES: list[tuple[int, str]] = [
 
 def fact_key(port: int, path: str) -> str:
     return f"{port}:{path}"
+
+
+def coverage_stats(facts: dict[str, ProbeResult]) -> dict:
+    """Scan-coverage summary: how much of the probe plan actually got an HTTP
+    answer. partial=True means at least one probe errored (filtered host,
+    budget exhaustion, blocked redirect) — an 'A' grade from partial facts is
+    not proof of clean, and callers must be able to tell the difference."""
+    return {
+        "probes_total": len(facts),
+        "probes_answered": sum(1 for r in facts.values() if r.status_code is not None),
+        "partial": any(r.error for r in facts.values()),
+    }
 
 
 def probe_plan() -> list[tuple[int, str]]:
@@ -221,7 +236,10 @@ async def _fetch(
         except httpx.TimeoutException:
             pass  # open-ended stream (SSE): keep whatever arrived
         body = b"".join(chunks)[:MAX_BODY].decode("utf-8", "replace")
-        return ProbeResult(url=logical_url, status_code=resp.status_code, body=body)
+        return ProbeResult(
+            url=logical_url, status_code=resp.status_code, body=body,
+            server=resp.headers.get("server", ""),
+        )
     return ProbeResult(url=logical_url, status_code=None, error="TooManyRedirects")
 
 

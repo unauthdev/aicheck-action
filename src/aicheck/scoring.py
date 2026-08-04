@@ -8,8 +8,12 @@ any MEDIUM → C, clean → A.
 
 from __future__ import annotations
 
+import logging
+
 from .checks import ALL_CHECKERS
 from .models import Finding
+
+log = logging.getLogger(__name__)
 
 _GRADE_BY_SEVERITY = {"CRITICAL": "F", "HIGH": "D", "MEDIUM": "C"}
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1}
@@ -31,8 +35,15 @@ def run_checkers(facts: dict, target: str) -> list[Finding]:
     for checker in ALL_CHECKERS:
         try:
             findings.extend(checker.detect(facts))
-        except Exception:
-            continue  # one broken checker must never kill a scan
+        except Exception as exc:
+            # One broken checker must never kill a scan — but it must not be
+            # invisible either: a silently dead checker reads as "clean".
+            log.warning(
+                "checker %s failed: %s: %s",
+                getattr(checker, "CHECK_ID", None) or checker.__name__,
+                type(exc).__name__, exc,
+            )
+            continue
     # Annotation only — never touches severity / grade inputs.
     from .checks.vuln_lookup import annotate_known_cves
     try:

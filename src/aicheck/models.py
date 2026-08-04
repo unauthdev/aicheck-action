@@ -17,6 +17,9 @@ class ProbeResult:
     status_code: Optional[int]
     body: str = ""
     error: Optional[str] = None
+    # Value of the response Server header ("" when absent). Some products
+    # (e.g. Milvus :9091) fingerprint only via this header.
+    server: str = ""
 
     @property
     def ok(self) -> bool:

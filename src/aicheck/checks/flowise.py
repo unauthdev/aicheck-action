@@ -1,7 +1,14 @@
 """Flowise :3000 — drag-and-drop LLM agent/chatflow builder exposed.
 
-Shares :3000 with Langfuse: fingerprint strictly by content. GET /api/v1/ping
-returns {"ping": "pong"} on Flowise, or the page carries Flowise markers.
+Shares :3000 with Langfuse and half the Node dev ecosystem: fingerprint
+strictly by content. GET /api/v1/ping returning {"ping": "pong"} is a generic
+health shape and is NOT enough on its own. A Flowise-unique marker is
+required in conjunction:
+- "flowise" in the root page, or
+- GET /api/v1/public-chatflows answering a list of flows (product-unique
+  path), or
+- ping/pong AND /api/v1/version answering a version (two exact Flowise
+  API paths answering together).
 
 Agent-runtime surface (GET-only, whitelisted by Flowise by design):
 - GET /api/v1/public-chatflows → list of publicly callable chatflows/agentflows
@@ -61,7 +68,8 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     elif version is not None and version.ok and version.body.strip().startswith('"'):
         ver_str = version.body.strip().strip('"')
 
-    if not (ping_hit or root_hit or flow_names):
+    if not (root_hit or flow_names or (ping_hit and ver_str)):
+        # ping/pong alone is a generic health shape — no Flowise evidence.
         return []
 
     bits = []

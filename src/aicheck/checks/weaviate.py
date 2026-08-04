@@ -1,8 +1,10 @@
 """Weaviate :8080 — vector database exposed.
 
 Shares :8080 with Open WebUI: fingerprint strictly by content. GET /v1/meta
-returns Weaviate's module JSON with its version. GET /v1/schema answering
-200 means the schema (and effectively the data plane) is open to anyone.
+must answer the full Weaviate meta shape — hostname + version + modules
+together (modules is Weaviate's distinctive key; version+modules alone is
+too thin for a shared port). GET /v1/schema answering 200 means the schema
+(and effectively the data plane) is open to anyone.
 
 Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
 """
@@ -21,7 +23,14 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     schema = facts.get("8080:/v1/schema")
 
     meta_j = meta.json() if meta is not None and meta.ok else None
-    meta_hit = isinstance(meta_j, dict) and ("weaviate" in str(meta_j.get("hostname", "")).lower() or "version" in meta_j and "modules" in meta_j)
+    # Real /v1/meta: {"hostname": ..., "version": ..., "modules": {...}}.
+    # Require the full conjunction — version+modules alone is too generic.
+    meta_hit = (
+        isinstance(meta_j, dict)
+        and "hostname" in meta_j
+        and "version" in meta_j
+        and "modules" in meta_j
+    )
     if not meta_hit:
         return []
 
@@ -30,8 +39,14 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
 
     schema_j = schema.json() if schema is not None and schema.ok else None
     if isinstance(schema_j, dict) and "classes" in schema_j:
-        classes = [str(c.get("class", "?")) for c in (schema_j.get("classes") or [])[:5]]
-        class_bit = f"; {len(schema_j['classes'])} class(es) readable ({', '.join(classes)})" if classes else "; schema readable"
+        raw_classes = schema_j.get("classes")
+        if not isinstance(raw_classes, list):
+            raw_classes = []
+        classes = [
+            str(c.get("class", "?")) if isinstance(c, dict) else str(c)
+            for c in raw_classes[:5]
+        ]
+        class_bit = f"; {len(raw_classes)} class(es) readable ({', '.join(classes)})" if classes else "; schema readable"
         return [
             Finding(
                 check_id=CHECK_ID,

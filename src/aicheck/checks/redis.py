@@ -6,8 +6,11 @@ can fingerprint safely is the HTTP console people put in front of it:
 - RedisInsight (default :5540, older :8001) — /api/health + optional /api/databases
 - Redis Commander (:8081 and kin) — HTML title fingerprint
 
-Finding class: agent-memory. Grades follow open-console vs console-with-DB-list;
-we do not claim TCP Redis itself was fingerprinted.
+RedisInsight identification REQUIRES the "redisinsight" marker in the health
+or root body. A generic {"status": "ok"|"pass"|"healthy"} health shape is
+served by countless apps and is not evidence on its own — no finding without
+the marker. Finding class: agent-memory. Grades follow open-console vs
+console-with-DB-list; we do not claim TCP Redis itself was fingerprinted.
 """
 
 from __future__ import annotations
@@ -30,14 +33,11 @@ def _body(p: ProbeResult | None) -> str:
     return str(p.body)
 
 
-def _insight_healthy(health: ProbeResult, root: ProbeResult | None) -> bool:
-    hj = health.json()
-    body = _body(health).lower()
-    if isinstance(hj, dict):
-        status = str(hj.get("status", "")).lower()
-        if status in ("pass", "healthy", "ok"):
-            return True
-    if "redisinsight" in body:
+def _insight_identified(health: ProbeResult, root: ProbeResult | None) -> bool:
+    """RedisInsight fingerprint: the "redisinsight" marker must appear in the
+    health response or the root page. A generic {"status": "ok"} health JSON
+    without the marker is not evidence — too many apps share that shape."""
+    if "redisinsight" in _body(health).lower():
         return True
     if root is not None and root.ok and "redisinsight" in _body(root).lower():
         return True
@@ -70,7 +70,7 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         if health is None or not health.ok:
             continue
         root = facts.get(f"{port}:/")
-        if not _insight_healthy(health, root):
+        if not _insight_identified(health, root):
             continue
         dbs = facts.get(f"{port}:/api/databases") or facts.get(f"{port}:/api/databases/")
         if dbs is not None and dbs.ok:
