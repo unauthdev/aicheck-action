@@ -8,6 +8,11 @@ HIGH if settings are simply readable.
 Version: n8n ships its release in the index HTML as a base64-encoded
 `n8n:config:sentry` meta tag ({"release": "n8n@<version>", ...}). We decode
 that — it is what the server actually sent, not a guess.
+
+Auth-walled (observation, INFO — never graded): the n8n web app answers on /
+(the SPA serves even when auth is on — a product-unique marker) while
+/rest/settings demands auth, or a walled probe's own body/Server header
+names n8n. A bare 401 on :5678 is NOT evidence.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import json
 import re
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled, walled_and_marked
 from .cvemap import cve_findings
 
 CHECK_ID = "n8n"
@@ -59,8 +65,42 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         "userManagement" in data or "settingsMode" in data
     )
     if not (root_hit or settings_hit):
-        return []
+        hit = walled_and_marked((root, settings), "n8n")
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="n8n",
+                title="n8n instance present but auth-walled",
+                url="http://TARGET:5678/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries an n8n marker; the instance is present but demands "
+                    "authentication (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+            )
+        ]
     if settings is None or not settings.ok or data is None:
+        if walled(settings):
+            # The n8n web app answered on / (product-unique) while the settings
+            # API demands auth — the standard auth'd n8n deployment.
+            return [
+                observation(
+                    check_id=CHECK_ID,
+                    product="n8n",
+                    title="n8n instance present but auth-walled",
+                    url="http://TARGET:5678/",
+                    evidence=(
+                        f"GET {root.url if root is not None else settings.url} → 200 "
+                        f"(n8n web app); GET {settings.url} → {settings.status_code} "
+                        "— the instance is present but its settings API demands "
+                        "authentication (present, not graded)"
+                    ),
+                    fix_card_id=FIX_CARD_ID,
+                )
+            ]
         return []
 
     ver_str = _version_from_html(root.body) if root is not None else ""

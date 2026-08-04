@@ -3,11 +3,17 @@
 Fingerprint: GET /api/config returns JSON naming "Open WebUI", or the index
 page title says Open WebUI. HIGH when open signup is enabled, MEDIUM when the
 instance is merely reachable. /api/config also discloses the exact version.
+
+Auth-walled (observation, INFO — never graded): an Open WebUI probe answering
+401/403 whose own body or Server header names Open WebUI (e.g. an auth proxy
+in front of the SPA). A bare 401 on :8080 is NOT evidence (the port is
+shared with Weaviate, MCP servers and arbitrary apps).
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled_and_marked
 from .cvemap import cve_findings
 
 CHECK_ID = "openwebui"
@@ -23,7 +29,23 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         root is not None and root.ok and "open webui" in root.body.lower()
     )
     if not fingerprinted:
-        return []
+        hit = walled_and_marked((root, config), "open webui")
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="Open WebUI",
+                title="Open WebUI instance present but auth-walled",
+                url="http://TARGET:8080/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries an Open WebUI marker; the instance is present but "
+                    "demands authentication (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+            )
+        ]
 
     signup_enabled = False
     ver_str = ""

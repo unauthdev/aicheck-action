@@ -48,6 +48,21 @@ are excluded from every drift bucket — a dead host never looks remediated.
 | `grade` | string \| null | Letter grade; `null` unless `done`. |
 | `coverage` | object \| null | `{probes_total, probes_answered, partial}`. |
 | `findings` | list[finding] | Enriched findings (empty unless `done`). |
+| `observations` | list[observation] | Auth-walled-but-fingerprinted services (severity `INFO`). **Additive within v1** (added after freeze). Empty unless `done`. |
+
+## observation (additive within v1)
+
+An observation is a raw checker `Finding.to_dict()` (same shape as
+`aicheck scan --format json` findings): `check_id`, `product`, `title`,
+`severity` (always `"INFO"`), `url`, `evidence`, `fix_card_id`, `details`
+(always `details.auth == "present"`). It means the product was confidently
+fingerprinted — same product-unique evidence bar as an exposure — but its
+API/UI demands authentication (401/403 or a login wall).
+
+Observations are **never graded** and deliberately **not diffed by drift in
+v1**: they carry no `finding_id`, enter no drift bucket, and are not
+persisted to `state.json`. Diffing observations is a deliberate deferral,
+candidates for a future schema version.
 
 ## finding (enriched)
 

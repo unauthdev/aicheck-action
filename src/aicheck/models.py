@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
-SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM")
+# INFO is a non-grading level: observations (fingerprinted-but-auth-walled
+# services) carry it and must never influence scoring.grade.
+SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "INFO")
 
 
 @dataclass
@@ -39,7 +41,7 @@ class Finding:
     check_id: str
     product: str
     title: str
-    severity: str  # CRITICAL | HIGH | MEDIUM
+    severity: str  # CRITICAL | HIGH | MEDIUM (graded) | INFO (observation, never graded)
     url: str
     evidence: str
     fix_card_id: str

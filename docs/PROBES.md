@@ -73,11 +73,25 @@ Port **443** uses `https://`; all other listed ports use `http://`.
 5. Output includes `evidence` (URL + status) and `how_produced` explaining the
    probe class. Severity is not LLM-assigned.
 
+## Auth-walled services (observations)
+
+A probe answered with 401/403 (or a login wall) is never a finding — but when
+the product is still confidently fingerprinted (the walled response itself
+carries a product-unique marker, e.g. a `Server: Milvus/...` header, or a
+sibling probe already fingerprinted the product), the checker emits an
+**observation**: severity `INFO`, `details.auth = "present"`, reported on a
+separate output channel (`observations` in scan/inventory JSON, note-level in
+SARIF). Observations are never graded and never fail CI. A bare 401 on a
+well-known port with no product marker produces nothing — the FP bar is the
+same as for exposures. This needs no extra traffic: observations reuse only
+the probe plan above.
+
 ## What this deliberately misses
 
 Documented limits (not bugs):
 
-- Authenticated-but-vulnerable services (token present, still RCE-prone)
+- Authenticated-but-vulnerable services (token present, still RCE-prone —
+  auth-walled services are reported as INFO observations, not tested)
 - Non-standard ports not in the probe list
 - Services only reachable behind a reverse proxy on an unlisted path/host
 - Raw Redis RESP (`:6379`) — HTTP consoles only

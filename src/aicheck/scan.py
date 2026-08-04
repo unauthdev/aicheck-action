@@ -76,23 +76,31 @@ def _services_wanted(finding, wanted: set[str]) -> bool:
 async def scan(target: str, allow_private: bool = False,
                services: list[str] | None = None,
                transport: httpx.AsyncBaseTransport | None = None,
-               log: recon.ConnectLog | None = None) -> tuple[str, list[dict], dict]:
-    """Returns (grade, findings, coverage). Raises ssrf.TargetRejected on bad
-    targets. coverage (recon.coverage_stats) tells the caller how much of the
-    probe plan was answered — a dead/filtered host grades A on partial facts.
-    `log`, when given, receives (method, logical_url, dialed_address) before
-    every outbound request — the --verbose connection log."""
+               log: recon.ConnectLog | None = None) -> tuple[str, list[dict], list[dict], dict]:
+    """Returns (grade, findings, observations, coverage). Raises
+    ssrf.TargetRejected on bad targets. coverage (recon.coverage_stats) tells
+    the caller how much of the probe plan was answered — a dead/filtered host
+    grades A on partial facts. observations are fingerprinted-but-auth-walled
+    services (severity INFO): reported, never graded. `log`, when given,
+    receives (method, logical_url, dialed_address) before every outbound
+    request — the --verbose connection log."""
     if allow_private:
         host, ips = resolve_internal(target)
     else:
         host, ips = ssrf.validate_target(target)
     facts = await recon.gather_facts(host, transport=transport, pinned_ips=ips, log=log)
     coverage = recon.coverage_stats(facts)
-    findings = run_checkers(facts, host)
+    findings, observations = run_checkers(facts, host)
     if services:
         wanted = {s.lower() for s in services}
         findings = [f for f in findings if _services_wanted(f, wanted)]
-    return grade(findings), [f.to_dict() for f in findings], coverage
+        observations = [o for o in observations if _services_wanted(o, wanted)]
+    return (
+        grade(findings),
+        [f.to_dict() for f in findings],
+        [o.to_dict() for o in observations],
+        coverage,
+    )
 
 
 def _door_line(g: str, findings: list[dict]) -> str:
@@ -111,7 +119,8 @@ def _door_line(g: str, findings: list[dict]) -> str:
 
 def render_text(target: str, g: str, findings: list[dict],
                 services_filter: list[str] | None = None,
-                coverage: dict | None = None) -> str:
+                coverage: dict | None = None,
+                observations: list[dict] | None = None) -> str:
     lines = [f"aicheck — {target} → grade {g} ({len(findings)} findings)"]
     if coverage and coverage.get("partial"):
         lines.append(
@@ -132,6 +141,15 @@ def render_text(target: str, g: str, findings: list[dict],
             )
         else:
             lines.append("  clean — no exposed AI services found")
+    if observations:
+        # Structurally separate channel: fingerprinted-but-auth-walled services
+        # are reported for visibility and NEVER graded.
+        lines.append(
+            f"  observed (auth-walled): {len(observations)} services — "
+            "present but not graded"
+        )
+        for o in observations:
+            lines.append(f"  {o['severity']:8} {o['product']}: {o['title']}")
     lines.append(_door_line(g, findings))
     return "\n".join(lines) + "\n"
 
@@ -180,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
 
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
     try:
-        g, findings, coverage = asyncio.run(
+        g, findings, observations, coverage = asyncio.run(
             scan(args.target, allow_private=args.allow_private, services=services, log=log))
     except ssrf.TargetRejected as exc:
         print(f"target rejected: {exc}", file=sys.stderr)
@@ -193,15 +211,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"# {len(dialed)} connections, all to {args.target} "
               f"(IPs: {', '.join(sorted(set(dialed)))})", file=sys.stderr)
 
-    payload = {"target": args.target, "grade": g, "findings": findings, "coverage": coverage}
+    payload = {"target": args.target, "grade": g, "findings": findings,
+               "observations": observations, "coverage": coverage}
     if services:
         payload["services_filter"] = services
     if args.format == "json":
         print(json.dumps(payload, indent=2))
     elif args.format == "sarif":
-        print(json.dumps(sarif.to_sarif(args.target, g, findings, coverage=coverage), indent=2))
+        print(json.dumps(sarif.to_sarif(args.target, g, findings, coverage=coverage,
+                                        observations=observations), indent=2))
     else:
-        print(render_text(args.target, g, findings, services_filter=services, coverage=coverage), end="")
+        print(render_text(args.target, g, findings, services_filter=services,
+                          coverage=coverage, observations=observations), end="")
 
     try:
         from . import versioncheck

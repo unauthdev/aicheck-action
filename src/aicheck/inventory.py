@@ -236,7 +236,7 @@ async def scan_target(
     host = str(target["host"])
     row_base = {"host": host, "owner": target.get("owner"), "env": target.get("env")}
     try:
-        grade, findings, coverage = await scan.scan(
+        grade, findings, observations, coverage = await scan.scan(
             host,
             allow_private=allow_private,
             services=services,
@@ -250,6 +250,7 @@ async def scan_target(
             "grade": None,
             "coverage": None,
             "findings": [],
+            "observations": [],
         }
     except Exception as exc:
         # One bad host must never kill the run — record and move on.
@@ -260,6 +261,7 @@ async def scan_target(
             "grade": None,
             "coverage": None,
             "findings": [],
+            "observations": [],
         }
 
     # A host that answered nothing is not "clean" — an A grade from zero
@@ -281,6 +283,9 @@ async def scan_target(
         "grade": grade,
         "coverage": coverage,
         "findings": enriched,
+        # Fingerprinted-but-auth-walled services (severity INFO). Additive
+        # within schema v1; deliberately excluded from drift and state.
+        "observations": observations,
     }
 
 
@@ -482,6 +487,19 @@ def render_text(report: dict[str, Any]) -> str:
         for t in not_scanned:
             err = f" — {t['error']}" if t.get("error") else ""
             lines.append(f"  {t['host']}: {t.get('status')}{err}")
+        lines.append("")
+    observed = [
+        (t["host"], t.get("observations") or [])
+        for t in report.get("targets") or []
+    ]
+    observed = [(h, obs) for h, obs in observed if obs]
+    if observed:
+        # Auth-walled-but-fingerprinted services: visibility only, never graded,
+        # deliberately outside drift in schema v1.
+        lines.append("OBSERVED (auth-walled, not graded):")
+        for host, obs in observed:
+            products = ", ".join(sorted({o.get("product", "?") for o in obs}))
+            lines.append(f"  {host}: {len(obs)} observed — {products}")
         lines.append("")
     mode = report.get("probe_mode") or {}
     lines.append(

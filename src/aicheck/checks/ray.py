@@ -6,6 +6,11 @@ unauthenticated API also answers data — GET /api/jobs/ (job list) or
 GET /nodes (cluster nodes). An open Ray Jobs API is unauthenticated remote
 code execution: anyone can submit a job that runs arbitrary code on the
 cluster → CRITICAL.
+
+Auth-walled (observation, INFO — never graded): the product is fingerprinted
+(version/dashboard marker) but the data APIs answer 401/403 — or a walled
+probe's own body/Server header names Ray. A bare 401 on :8265 is NOT
+evidence.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ from __future__ import annotations
 import re
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled, walled_and_marked
 
 CHECK_ID = "ray"
 FIX_CARD_ID = "ray-exposed"
@@ -55,12 +61,49 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     dashboard_html = root is not None and root.ok and "ray dashboard" in root.body.lower()
     fingerprinted = bool(ver_str) or dashboard_html
     if not fingerprinted:
-        return []
+        # "ray" alone is too common a substring (array, gray) — require the
+        # dashboard's full marker.
+        hit = walled_and_marked((root, version, jobs, nodes), "ray dashboard")
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="Ray",
+                title="Ray dashboard present but auth-walled",
+                url="http://TARGET:8265/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries a Ray marker; the dashboard is present but demands "
+                    "authentication (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+            )
+        ]
 
     jobs_open = _has_data(jobs)
     nodes_open = _has_data(nodes)
     if not (jobs_open or nodes_open):
-        return []  # fingerprinted but APIs demand auth / return nothing
+        # Fingerprinted (version/dashboard marker answered) but the data APIs
+        # demand auth — the cluster is present, walled, and not graded.
+        hit = jobs if walled(jobs) else nodes if walled(nodes) else None
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="Ray",
+                title="Ray dashboard present but Jobs/Nodes API auth-walled",
+                url="http://TARGET:8265/",
+                evidence=(
+                    f"Ray fingerprint matched (version/dashboard marker); "
+                    f"GET {hit.url} → {hit.status_code} — the job-submission "
+                    "surface demands authentication (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+                details={"version": ver_str},
+            )
+        ]
 
     version_bit = f"version {ver_str}; " if ver_str else ""
     open_bits = []

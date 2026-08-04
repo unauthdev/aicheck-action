@@ -3,16 +3,41 @@
 Fingerprint (content-based): GET / returns "Ollama is running", or
 GET /api/version returns {"version": ...}. If the API answers without auth,
 pull/push/delete endpoints are open too → CRITICAL.
+
+Auth-walled (observation, INFO — never graded): a probe answering 401/403
+whose own body or Server header names Ollama (e.g. an auth proxy in front of
+the API). A bare 401 on :11434 is NOT evidence — any app can sit there.
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled_and_marked
 from .cvemap import cve_findings
 
 CHECK_ID = "ollama"
 FIX_CARD_ID = "ollama-exposed"
 MAX_MODEL_NAMES = 5
+
+
+def _walled_observation(probes) -> list[Finding]:
+    hit = walled_and_marked(probes, "ollama")
+    if hit is None:
+        return []
+    return [
+        observation(
+            check_id=CHECK_ID,
+            product="Ollama",
+            title="Ollama API present but auth-walled",
+            url="http://TARGET:11434/",
+            evidence=(
+                f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                "carries an Ollama marker; the service is present but demands "
+                "authentication (present, not graded)"
+            ),
+            fix_card_id=FIX_CARD_ID,
+        )
+    ]
 
 
 def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
@@ -24,7 +49,7 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
         version is not None and version.ok and isinstance(version.json(), dict) and "version" in version.json()
     )
     if not fingerprinted:
-        return []
+        return _walled_observation((root, version, tags))
 
     ver_str = ""
     if version is not None and version.ok and isinstance(version.json(), dict):

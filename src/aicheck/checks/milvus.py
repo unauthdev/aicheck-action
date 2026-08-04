@@ -21,6 +21,10 @@ is one tier below (MEDIUM): a management console that still needs a Milvus
 connection string to reach data.
 
 Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
+
+Auth-walled (observation, INFO — never graded): a :9091 probe answering
+401/403 whose Server header starts with "milvus" — the SAME product-unique
+bar as the exposure fingerprint. A bare 401 on :9091 is NOT evidence.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from __future__ import annotations
 import re
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled
 from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "milvus"
@@ -90,6 +95,35 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
                 details=with_risk({"version": version}, AGENT_MEMORY),
             )
         )
+    else:
+        # Auth-walled Milvus: a :9091 probe answered 401/403 with the Milvus
+        # Server header — same product-unique bar as the exposure fingerprint.
+        hit = next(
+            (
+                p
+                for key in ("9091:/healthz", "9091:/")
+                if (p := facts.get(key)) is not None
+                and walled(p)
+                and (p.server or "").lower().startswith("milvus")
+            ),
+            None,
+        )
+        if hit is not None:
+            findings.append(
+                observation(
+                    check_id=CHECK_ID,
+                    product="Milvus",
+                    title="Milvus vector database present but auth-walled",
+                    url="http://TARGET:9091/",
+                    evidence=(
+                        f"GET {hit.url} → {hit.status_code} (Server: {hit.server}) — "
+                        "the walled response itself identifies Milvus; the service "
+                        "is present but demands authentication (present, not graded)"
+                    ),
+                    fix_card_id=FIX_CARD_ID,
+                    details={"version": _version_from(hit.server)},
+                )
+            )
 
     for port in _ATTU_PORTS:
         root = facts.get(f"{port}:/")

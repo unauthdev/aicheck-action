@@ -9,11 +9,16 @@ Qdrant ships with NO authentication by default — exposure is a config choice
 the docs warn about, not a bug.
 
 Finding class: agent-memory (OWASP ASI06) — grades unchanged vs prior severity.
+
+Auth-walled (observation, INFO — never graded): a Qdrant probe answering
+401/403 whose own body or Server header names Qdrant (API key configured).
+A bare 401 on :6333 is NOT evidence.
 """
 
 from __future__ import annotations
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled_and_marked
 from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "qdrant"
@@ -27,7 +32,23 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     root_j = root.json() if root is not None and root.ok else None
     fingerprinted = isinstance(root_j, dict) and "qdrant" in str(root_j.get("title", "")).lower()
     if not fingerprinted:
-        return []
+        hit = walled_and_marked((root, collections), "qdrant")
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="Qdrant",
+                title="Qdrant vector database present but auth-walled",
+                url="http://TARGET:6333/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries a Qdrant marker; the database is present but demands "
+                    "an API key (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+            )
+        ]
 
     version = str(root_j.get("version", ""))
     version_bit = f"; version {version}" if version else ""

@@ -11,6 +11,10 @@ grade — :8188 is not exclusive and the string appears in docs/tutorials):
   corroboration → MEDIUM (exposed UI, thin evidence).
 
 ComfyUI-Manager versions < 3.38 are CVE-2025-67303 unauth RCE (CVE map).
+
+Auth-walled (observation, INFO — never graded): a ComfyUI probe answering
+401/403 whose own body or Server header names ComfyUI. A bare 401 on :8188
+is NOT evidence (:8188 is not exclusive).
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from __future__ import annotations
 import re
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled_and_marked
 from .cvemap import cve_findings
 
 CHECK_ID = "comfyui"
@@ -57,7 +62,23 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     # version endpoint answering. The bare "comfyui" string is only MEDIUM.
     strong = stats_match or bool(manager_ver)
     if not (strong or root_hit):
-        return []
+        hit = walled_and_marked((root, stats, manager), "comfyui")
+        if hit is None:
+            return []
+        return [
+            observation(
+                check_id=CHECK_ID,
+                product="ComfyUI",
+                title="ComfyUI present but auth-walled",
+                url="http://TARGET:8188/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries a ComfyUI marker; the service is present but demands "
+                    "authentication (present, not graded)"
+                ),
+                fix_card_id=FIX_CARD_ID,
+            )
+        ]
 
     evidence_bits = []
     hw: dict = {}

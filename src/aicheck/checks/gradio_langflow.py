@@ -9,6 +9,10 @@ object with at least two of Gradio's config keys (components, dependencies,
 mode, layout, blocks). Any JSON object at /config is NOT enough on its own.
 An exposed Gradio app is your ML demo on the public internet, often with
 file upload. HIGH.
+
+Auth-walled (observation, INFO — never graded): a :7860 probe answering
+401/403 whose own body or Server header names Gradio. A bare 401 on :7860
+is NOT evidence (the port is shared with Langflow and arbitrary apps).
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import re
 
 from ..models import Finding, ProbeResult
+from .auth_wall import observation, walled_and_marked
 from .cvemap import cve_findings
 from .risk_classes import AGENT_RUNTIME, with_risk
 
@@ -95,6 +100,22 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
                 evidence="; ".join(bits) + " — your ML demo, its inputs and any file uploads are public",
                 fix_card_id="gradio-exposed",
                 details={},
+            )
+        ]
+    hit = walled_and_marked((root, config), "gradio")
+    if hit is not None:
+        return [
+            observation(
+                check_id="gradio",
+                product="Gradio",
+                title="Gradio app present but auth-walled",
+                url="http://TARGET:7860/",
+                evidence=(
+                    f"GET {hit.url} → {hit.status_code} — the walled response itself "
+                    "carries a Gradio marker; the app is present but demands "
+                    "authentication (present, not graded)"
+                ),
+                fix_card_id="gradio-exposed",
             )
         ]
     return []
