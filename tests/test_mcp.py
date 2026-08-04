@@ -46,7 +46,7 @@ def test_mcp_positive_jsonrpc():
     JSON-RPC error on a transport status (400 here). Works against both
     the pre- and post-hardening checker."""
     findings = mcp.detect(_facts(
-        _pr(8080, "/mcp", 400, _j({"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": "Bad Request: No valid session ID provided"}})),
+        _pr(8080, "/mcp", 400, _j({"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": "Bad Request: No valid session ID provided (initialize method required)"}})),
     ))
     assert len(findings) == 1
     assert findings[0].severity == "CRITICAL"
