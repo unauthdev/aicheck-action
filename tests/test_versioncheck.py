@@ -1,9 +1,12 @@
 """Unit tests for the weekly version check — run standalone: python tests/test_versioncheck.py
 
 Everything is injected — cache path, clock, fetcher — so no test touches the
-network or the real ~/.cache. The contract: opt-out (--no-version-check,
-AICHECK_NO_VERSION_CHECK=1), at most one stderr line, and every failure mode
-(offline, timeout, 404, bad JSON, unwritable cache) is silence.
+network or the real ~/.cache. The contract: opt-in (--version-check,
+AICHECK_VERSION_CHECK=1) and off by default — no flag and no env var means
+the fetcher never runs, even with an empty cache. The legacy opt-out switches
+(--no-version-check, AICHECK_NO_VERSION_CHECK=1) still silence an enabled
+check. At most one stderr line, and every failure mode (offline, timeout,
+404, bad JSON, unwritable cache) is silence.
 """
 
 from __future__ import annotations
@@ -169,52 +172,99 @@ def _patched(cache: Path, fetcher):
         versioncheck._fetch_latest = orig_fetch
 
 
+@contextlib.contextmanager
+def _env(**overrides):
+    """Set/clear env vars for one test, restoring afterwards. Pass None to
+    unset — both version-check vars are always cleared first so a developer's
+    own environment cannot leak into a run."""
+    saved = os.environ.copy()
+    for var in ("AICHECK_VERSION_CHECK", "AICHECK_NO_VERSION_CHECK"):
+        os.environ.pop(var, None)
+    for var, value in overrides.items():
+        if value is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = value
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def test_default_is_silent_even_with_empty_cache() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        called = []
+        with _env(), _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
+            code, _out, _err = _run_scan(["127.0.0.2", "--allow-private"])
+        assert code == 0
+        assert not called
+    print("ok — no flag, no env → fetcher never called (opt-in default)")
+
+
+def test_flag_enables() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        called = []
+        with _env(), _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
+            code, _out, err = _run_scan(
+                ["127.0.0.2", "--allow-private", "--version-check"])
+        assert code == 0
+        assert called == [1]
+        assert "v9.9.9 is out" in err
+    print("ok — --version-check → fetcher called, notice on stderr")
+
+
+def test_env_var_enables() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        called = []
+        with _env(AICHECK_VERSION_CHECK="1"), \
+                _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
+            code, _out, err = _run_scan(["127.0.0.2", "--allow-private"])
+        assert code == 0
+        assert called == [1]
+        assert "v9.9.9 is out" in err
+    print("ok — AICHECK_VERSION_CHECK=1 → fetcher called, notice on stderr")
+
+
 def test_failure_run_identical_to_disabled_run() -> None:
     with tempfile.TemporaryDirectory() as d:
-        env = os.environ.copy()
-        os.environ["AICHECK_NO_VERSION_CHECK"] = "1"
-        try:
-            code_off, out_off, _ = _run_scan(["127.0.0.2", "--allow-private"])
-        finally:
-            os.environ.clear()
-            os.environ.update(env)
+        with _env():
+            code_off, out_off, _ = _run_scan(
+                ["127.0.0.2", "--allow-private", "--no-version-check"])
 
         def boom():
             raise httpx.TimeoutException("slow network")
 
-        with _patched(_cache(d), boom):
-            code_fail, out_fail, err_fail = _run_scan(["127.0.0.2", "--allow-private"])
+        with _env(), _patched(_cache(d), boom):
+            code_fail, out_fail, err_fail = _run_scan(
+                ["127.0.0.2", "--allow-private", "--version-check"])
         assert code_fail == code_off, (code_fail, code_off)
         assert out_fail == out_off
         assert "is out" not in err_fail
-    print("ok — fetcher raising → same exit code and stdout as a no-check run")
+    print("ok — enabled check with fetcher raising → same exit code and stdout as a no-check run")
 
 
 def test_env_var_disables() -> None:
     with tempfile.TemporaryDirectory() as d:
         called = []
-        env = os.environ.copy()
-        os.environ["AICHECK_NO_VERSION_CHECK"] = "1"
-        try:
-            with _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
-                code, _out, _err = _run_scan(["127.0.0.2", "--allow-private"])
-        finally:
-            os.environ.clear()
-            os.environ.update(env)
+        with _env(AICHECK_VERSION_CHECK="1", AICHECK_NO_VERSION_CHECK="1"), \
+                _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
+            code, _out, _err = _run_scan(["127.0.0.2", "--allow-private"])
         assert code == 0
         assert not called
-    print("ok — AICHECK_NO_VERSION_CHECK=1 → fetcher never called")
+    print("ok — AICHECK_NO_VERSION_CHECK=1 still silences an env-enabled check")
 
 
 def test_flag_disables() -> None:
     with tempfile.TemporaryDirectory() as d:
         called = []
-        with _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
+        with _env(), _patched(_cache(d), lambda: called.append(1) or "9.9.9"):
             code, _out, _err = _run_scan(
-                ["127.0.0.2", "--allow-private", "--no-version-check"])
+                ["127.0.0.2", "--allow-private",
+                 "--version-check", "--no-version-check"])
         assert code == 0
         assert not called
-    print("ok — --no-version-check → fetcher never called")
+    print("ok — --no-version-check still silences a flag-enabled check")
 
 
 def test_wrapper_prints_notice_once_to_stderr() -> None:
@@ -236,8 +286,8 @@ def test_wrapper_prints_notice_once_to_stderr() -> None:
 
             versioncheck.datetime = FakeDatetime
             try:
-                with contextlib.redirect_stderr(buf):
-                    versioncheck.check_for_update()
+                with _env(), contextlib.redirect_stderr(buf):
+                    versioncheck.check_for_update(enabled=True)
             finally:
                 versioncheck.datetime = real_now
         assert buf.getvalue() == notice + "\n", buf.getvalue()
@@ -252,6 +302,9 @@ def main() -> int:
     test_older_and_equal_versions_silent()
     test_unwritable_cache_dir_silent()
     test_fetch_latest_bad_responses()
+    test_default_is_silent_even_with_empty_cache()
+    test_flag_enables()
+    test_env_var_enables()
     test_failure_run_identical_to_disabled_run()
     test_env_var_disables()
     test_flag_disables()

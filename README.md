@@ -1,4 +1,4 @@
-# aicheck
+# aicheck-scan
 
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-aicheck--scan-blue?logo=github)](https://github.com/marketplace/actions/aicheck-scan)
 [![Use this Action](https://img.shields.io/badge/GitHub-Use%20this%20Action-orange?logo=github)](https://github.com/unauthdev/aicheck-scan#add-to-your-repo-60-seconds)
@@ -8,12 +8,18 @@
 
 **Find exposed self-hosted AI services — in CI, or continuously across your estate.**
 
+Not agent behavior, not prompt safety — open, unauthenticated AI services,
+proven with a live GET.
+
 One engine, four doors (pip / GitHub Action / Docker / site):
 
-- **`aicheck <target>`** — CI feeder: fail the build if a PR ships an unauthenticated AI service
-- **`aicheck inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `changed` / `still_open`), no phone-home
-- **`aicheck inventory --flow-logs`** — passive discovery: turns VPC flow logs into an attributed AI-service inventory with zero probing (`--verify` sweeps what it finds)
-- **`aicheck template`** — static security scan of n8n / Dify / Flowise workflow template files: embedded secrets, exfil-shaped flows, dangerous nodes
+- **`aicheck-scan <target>`** — CI feeder: fail the build if a PR ships an unauthenticated AI service
+- **`aicheck-scan inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `changed` / `still_open`), no phone-home
+- **`aicheck-scan inventory --flow-logs`** — passive discovery: turns VPC flow logs into an attributed AI-service inventory with zero probing (`--verify` sweeps what it finds)
+- **`aicheck-scan template`** — static security scan of n8n / Dify / Flowise workflow template files: embedded secrets, exfil-shaped flows, dangerous nodes
+
+The documented command is `aicheck-scan`; the package also installs `aicheck`
+as a short alias — same entrypoint, use whichever you like.
 
 Live-probes Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant,
 Milvus, AnythingLLM, Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis
@@ -65,7 +71,7 @@ from CI) — that's what post-deploy monitoring is for.
 
 | door | install / use | when |
 |---|---|---|
-| pip CLI | `pip install aicheck-scan` → `aicheck your-host` | check any machine, right now |
+| pip CLI | `pip install aicheck-scan` → `aicheck-scan your-host` | check any machine, right now |
 | GitHub Action | `uses: unauthdev/aicheck-scan@v1` | every PR, in the build |
 | Docker | `docker run ghcr.io/unauthdev/aicheck:v1 your-host --allow-private` | GitLab, Bitbucket, Azure, Jenkins, bare CI |
 | site scanner | [unauth.dev](https://unauth.dev) | zero-install, from the internet's side |
@@ -137,21 +143,21 @@ smoke-test the wiring on first install.
 pip install aicheck-scan
 
 # CI / single host (same as the Action)
-aicheck example.com
-aicheck scan localhost --allow-private --fail-grade F
+aicheck-scan example.com
+aicheck-scan scan localhost --allow-private --fail-grade F
 
 # Local estate inventory (air-gapped; nothing phones home)
-aicheck inventory --targets targets.yaml --state-dir ./state --allow-private
+aicheck-scan inventory --targets targets.yaml --state-dir ./state --allow-private
 
 # CSV / JSONL / CIDRs + HMAC-signed webhook to YOUR endpoint on new findings
-aicheck inventory --targets hosts.jsonl --state-dir ./state --allow-private --i-own-these-targets \
+aicheck-scan inventory --targets hosts.jsonl --state-dir ./state --allow-private --i-own-these-targets \
   --webhook https://hooks.example.internal/aicheck --webhook-on new --webhook-secret $HOOK_SECRET
 
 # Passive: attribute AI services from flow logs, no packets sent
-aicheck inventory --flow-logs vpc-flow.log.gz --state-dir ./state
+aicheck-scan inventory --flow-logs vpc-flow.log.gz --state-dir ./state
 
 # Workflow template files (n8n / Dify / Flowise) — static, zero probing
-aicheck template community-workflow.json --format text
+aicheck-scan template community-workflow.json --format text
 ```
 
 Three channels in every report: **findings** (no-auth, graded),
@@ -169,8 +175,8 @@ never run Class B.
 Probe contract: [`docs/PROBES.md`](docs/PROBES.md).  
 Targets: YAML / CSV / JSONL examples under [`examples/`](examples/).
 
-The package installs the `aicheck` console command — same engine the Action and
-the Docker image run.
+The package installs the `aicheck-scan` console command (plus `aicheck` as a
+short alias) — same engine the Action and the Docker image run.
 
 Paranoid path — pin by hash, don't trust the index:
 
@@ -185,16 +191,17 @@ Hashes are in the release notes for each version. Details and verification:
 
 ## Air-gapped / offline
 
-The only call the engine makes beyond your target is an optional weekly
-PyPI version check. To run fully offline — air-gapped networks, locked-down
-runners — disable it either way:
+By default the engine dials nothing beyond your target — no telemetry, no
+phone-home. There is one optional extra: a weekly PyPI version check, and it
+is **opt-in** — it runs only when you ask for it:
 
 ```bash
-aicheck example.com --no-version-check        # per run
-export AICHECK_NO_VERSION_CHECK=1             # per environment
+aicheck-scan example.com --version-check       # per run
+export AICHECK_VERSION_CHECK=1                 # per environment
 ```
 
-With that off (and `--dry-run` to prove it), nothing is dialed except the
+Air-gapped networks and locked-down runners need no flags at all: with the
+check left off (and `--dry-run` to prove it), nothing is dialed except the
 hosts you name. Inventory mode is offline by design.
 
 ## Auditability
@@ -206,8 +213,9 @@ audit. full trust page: [docs/trust.md](docs/trust.md).
 ## Privacy / supply chain
 
 - **Runs entirely on your runner.** Probe traffic is read-only GETs to *your*
-  target. The only other dial is an optional weekly PyPI version check
-  (opt out: `--no-version-check` / `AICHECK_NO_VERSION_CHECK=1`) — see
+  target — nothing else is dialed by default. The one optional extra is a
+  weekly PyPI version check, off unless you enable it (`--version-check` /
+  `AICHECK_VERSION_CHECK=1`) — see
   [docs/trust.md](docs/trust.md). No telemetry to unauth.dev.
 - No credentials needed. No Docker socket. No privileged mode.
 - What it probes: well-known metadata endpoints only (version, tags,
@@ -276,8 +284,8 @@ The same engine runs standalone — install it from PyPI (see
 
 ```bash
 pip install aicheck-scan
-aicheck localhost --allow-private
-aicheck example.com --format sarif --fail-grade C
+aicheck-scan localhost --allow-private
+aicheck-scan example.com --format sarif --fail-grade C
 ```
 
 Exit codes: `0` pass, `1` grade at or worse than `--fail-grade`, `2` target
@@ -287,8 +295,8 @@ guards against scanning internal infrastructure by accident).
 Two flags expose the trust surface before and during a scan:
 
 ```bash
-aicheck example.com --dry-run   # print every request it would send — no sockets, no DNS
-aicheck example.com --verbose   # log each dialed connection (with pinned IP) to stderr
+aicheck-scan example.com --dry-run   # print every request it would send — no sockets, no DNS
+aicheck-scan example.com --verbose   # log each dialed connection (with pinned IP) to stderr
 ```
 
 ## License

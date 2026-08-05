@@ -26,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 aicheck = "aicheck.cli:main"
+aicheck-scan = "aicheck.cli:main"
 
 [project.urls]
 Homepage = "https://unauth.dev"

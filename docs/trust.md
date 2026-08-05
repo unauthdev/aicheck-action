@@ -12,8 +12,8 @@ nothing else is ever dialed. no telemetry, no phone-home, no analytics, no
 beacon to unauth.dev. no logins, no POSTs to your services, no exploit
 verification. it needs no credentials and accepts none.
 
-the one exception — a weekly, opt-out PyPI version check — is its own
-section below.
+there is one optional extra — a weekly, opt-in PyPI version check, off
+unless you enable it — in its own section below.
 
 ## verify it yourself
 
@@ -70,12 +70,14 @@ that's the number to pin against in `--require-hashes` installs — not a
 hash you computed from whatever the index handed you, and not one we typed
 into the notes by hand.
 
-## the one network call beyond your target
+## the optional network call beyond your target
 
-once per week, if online, the CLI checks PyPI's JSON API for a newer
-version (3s timeout, cannot raise, PyPI-only). disable with
-`--no-version-check` or `AICHECK_NO_VERSION_CHECK=1`; it never goes
-anywhere else.
+off by default. if you enable it with `--version-check` or
+`AICHECK_VERSION_CHECK=1`, then once per week, if online, the CLI checks
+PyPI's JSON API for a newer version (3s timeout, cannot raise, PyPI-only).
+the old opt-out switches — `--no-version-check` and
+`AICHECK_NO_VERSION_CHECK=1` — are still honored and silence it. it never
+goes anywhere else.
 
 ## Action pin posture
 

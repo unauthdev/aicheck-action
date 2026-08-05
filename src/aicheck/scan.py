@@ -2,10 +2,10 @@
 
 CI-shaped wrapper over the live-probe pipeline (recon → checkers → grade).
 Answers one question in a build job: "did we just ship an AI service with no
-auth?" Runs entirely against the given target — no database, no emails. One
-documented exception: after results are printed, a weekly PyPI version check
-(opt out: --no-version-check or AICHECK_NO_VERSION_CHECK=1; inventory mode
-never performs it).
+auth?" Runs entirely against the given target — no database, no emails, zero
+network calls beyond the target by default. An optional weekly PyPI update
+check exists but stays off unless explicitly enabled (--version-check or
+AICHECK_VERSION_CHECK=1; inventory mode never performs it).
 
   python -m aicheck.scan localhost --allow-private
   python -m aicheck.scan example.com --format sarif --fail-grade C > results.sarif
@@ -185,9 +185,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verbose", action="store_true",
                     help="log every outbound connection (with the pinned IP dialed) "
                          "to stderr as it happens")
+    ap.add_argument("--version-check", action="store_true",
+                    help="opt in to a weekly PyPI update check after results "
+                         "print (also: AICHECK_VERSION_CHECK=1) — off by default")
     ap.add_argument("--no-version-check", action="store_true",
-                    help="skip the weekly PyPI version check "
-                         "(also: AICHECK_NO_VERSION_CHECK=1)")
+                    help="deprecated no-op kept for backcompat: the update "
+                         "check is opt-in since it flipped from opt-out; this "
+                         "flag still silences it (also: AICHECK_NO_VERSION_CHECK=1)")
     ap.add_argument("--deep", action="store_true",
                     help="Class B gate: customer-run estate mode (requires "
                          "--i-own-these-targets); enables opt-in deep packs")
@@ -271,7 +275,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         from . import versioncheck
-        versioncheck.check_for_update(disabled=args.no_version_check)
+        versioncheck.check_for_update(enabled=args.version_check,
+                                      disabled=args.no_version_check)
     except ImportError:
         pass
     return 1 if _BADNESS[g] >= _BADNESS[args.fail_grade] else 0

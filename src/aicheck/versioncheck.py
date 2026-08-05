@@ -1,13 +1,16 @@
-"""Weekly PyPI version check — opt-out, failure-invisible.
+"""Weekly PyPI version check — opt-in, failure-invisible.
 
-Once a week (cached in ~/.cache/aicheck/version-check) a successful scan
-checks https://pypi.org/pypi/aicheck-scan/json for a newer release and prints
-one stderr line if there is one. This is the only network call in the package
-besides the scan itself, and it cannot raise, hang the scan (3s timeout), or
+Off by default: a scan makes zero network calls beyond the target unless the
+user explicitly enables this check with --version-check or
+AICHECK_VERSION_CHECK=1. When enabled, once a week (cached in
+~/.cache/aicheck/version-check) a successful scan checks
+https://pypi.org/pypi/aicheck-scan/json for a newer release and prints one
+stderr line if there is one. It cannot raise, hang the scan (3s timeout), or
 touch anything but PyPI: every failure mode — offline, timeout, 404 (the
 package predates its first release), bad JSON, unwritable cache — is silence.
 
-Disable with --no-version-check or AICHECK_NO_VERSION_CHECK=1.
+The old opt-out switches are still honored: --no-version-check and
+AICHECK_NO_VERSION_CHECK=1 silence the check even when it is enabled.
 """
 
 from __future__ import annotations
@@ -97,13 +100,18 @@ def maybe_notify(current_version: str, *, cache_path: Path, now: datetime,
         return None
 
 
-def check_for_update(*, disabled: bool = False) -> None:
+def check_for_update(*, enabled: bool = False, disabled: bool = False) -> None:
     """Side-effect wrapper called once at the end of a successful scan.
+    Opt-in: does nothing unless `enabled` (--version-check) or
+    AICHECK_VERSION_CHECK=1. `disabled` (--no-version-check) and
+    AICHECK_NO_VERSION_CHECK=1 are the legacy opt-out switches, still honored.
     Prints the notice to stderr if there is one. Cannot raise."""
     try:
         if disabled:
             return
         if os.environ.get("AICHECK_NO_VERSION_CHECK", "") not in ("", "0"):
+            return
+        if not enabled and os.environ.get("AICHECK_VERSION_CHECK", "") in ("", "0"):
             return
         from . import __version__
         notice = maybe_notify(__version__, cache_path=CACHE_PATH,
