@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 
 
-_SUBCOMMANDS = {"scan", "inventory", "inv"}
+_SUBCOMMANDS = {"scan", "inventory", "inv", "template"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
             "usage: aicheck <target> [scan flags]\n"
             "       aicheck scan <target> [scan flags]\n"
             "       aicheck inventory --targets FILE --state-dir DIR [flags]\n"
+            "       aicheck template <file|https-url> [...] [--format text|json]\n"
             "\n"
             "Same engine for CI (scan) and local continuous inventory.\n"
             "Probe contract: docs/PROBES.md · https://unauth.dev"
@@ -39,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "scan":
         from .scan import main as scan_main
         return scan_main(argv[1:])
+    if argv and argv[0] == "template":
+        from .workflow_templates import main as template_main
+        return template_main(argv[1:])
     # Legacy: `aicheck <target> [flags]` — keep Action/docs working.
     from .scan import main as scan_main
     return scan_main(argv)
