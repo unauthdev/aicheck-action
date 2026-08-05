@@ -21,8 +21,8 @@ consoles, MCP servers and more — grades A–F, SARIF on by default in CI, plai
 cards. From [unauth.dev](https://unauth.dev).
 
 Install from the [GitHub Marketplace](https://github.com/marketplace/actions/aicheck-scan),
-or follow the steps below. Maintainer listing notes:
-[`docs/marketplace.md`](docs/marketplace.md).
+or follow the steps below. Changes per release: [CHANGELOG.md](CHANGELOG.md).
+Maintainer listing notes: [`docs/marketplace.md`](docs/marketplace.md).
 
 ## Add to your repo (60 seconds)
 
