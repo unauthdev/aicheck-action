@@ -44,10 +44,19 @@ def enrich_finding(
     if worst and str(worst).upper() not in cves:
         cves.append(str(worst).upper())
 
-    how = (
-        "Live GET-only metadata probe; content fingerprint matched. "
-        "No login, POST, exploit verification, or model pull."
-    )
+    if str(finding.get("check_id") or "").endswith("-dataplane"):
+        # Class B data-plane pack finding — a GET-only claim would be false.
+        how = (
+            "Class B data-plane pack: zero-byte TCP connect accepted "
+            "(connect-and-close, 0 bytes sent), conjoined with the Class A "
+            "HTTP fingerprint on the same host. Reachability only — no auth "
+            "attempt, no protocol bytes, no data read."
+        )
+    else:
+        how = (
+            "Live GET-only metadata probe; content fingerprint matched. "
+            "No login, POST, exploit verification, or model pull."
+        )
     if details.get("version"):
         how += f" Version reported by target: {details['version']}."
     if cves:

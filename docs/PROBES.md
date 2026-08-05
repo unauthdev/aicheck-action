@@ -8,10 +8,47 @@ This document is the contract for local / air-gapped inventory runs
 | Class | How to enable | Traffic | Where |
 |---|---|---|---|
 | **A (default)** | always on | GET-only metadata probes | CI, inventory, hosted scanner |
-| **B (`--deep`)** | `--deep --i-own-these-targets` | Reserved for opt-in packs (auth headers, limited POSTs, future runtime checks). **No packs ship yet** — behavior matches Class A until they do | Customer-run estate only; **never** on hosted unauth.dev |
+| **B (`--deep`)** | `--deep --i-own-these-targets [--deep-packs data-plane]` | Class A GETs **plus** whatever the enabled packs send (today: zero-byte TCP connects — see below) | Customer-run estate only; **never** on hosted unauth.dev |
 
 Class B exists so enterprise mode can grow past GET-only without changing the
 default trust story. Selecting an unknown `--deep-packs` name fails closed.
+
+## Class B pack: `data-plane` (zero-byte TCP connect)
+
+Enabled only by the full triple: `--deep --deep-packs data-plane
+--i-own-these-targets`. Design doc: `docs/deep-pack-data-plane.md`.
+
+**Exact traffic added** — per host, per scan, nothing else:
+
+| Port | Product | What is sent |
+|---:|---|---|
+| 19530 | Milvus gRPC | One TCP connect-and-close. **Zero bytes sent.** |
+| 6334 | Qdrant gRPC | One TCP connect-and-close. **Zero bytes sent.** |
+| 50051 | Weaviate gRPC | One TCP connect-and-close. **Zero bytes sent.** |
+
+- Full TCP handshake, then close immediately. No protocol bytes, no TLS
+  detection, no banner reads — reachability only. Arguably less invasive than
+  the Class A GETs.
+- Same safety machinery as the GET probes: ssrf-validated pinned IPs (never a
+  fresh DNS answer), 2s per-connect timeout, ~10s overall budget, bounded
+  concurrency, `--verbose` connection log (`→ CONNECT tcp://host:19530 ...`),
+  and full `--dry-run` disclosure (`CONNECT tcp://host:19530 (0 bytes)`).
+- One connect per port per scan — no retry storms.
+- Deliberately **no Redis :6379** (raw RESP stays out of scope) and no other
+  products in v1.
+
+**Evidence rule — port alone never creates a finding.** A data-plane finding
+requires BOTH: the product identified by the Class A HTTP fingerprint on the
+same host, AND a TCP accept on that product's data-plane port. The finding is
+separate per product (`<product>-dataplane`, severity HIGH) with its own fix
+card — it never upgrades the HTTP finding.
+
+**What the finding claims:** the data plane *accepts connections from the
+prober's position* (evidence names the method: `TCP connect accepted — 0 bytes
+sent`). **What it deliberately does NOT claim:** that gRPC auth or TLS is
+absent, or that vector data is accessible. Connect-only cannot know —
+reachable ≠ data accessible. CRITICAL stays reserved for proven
+unauthenticated data access, which this probe can never prove.
 
 ## Class A guarantees (default)
 

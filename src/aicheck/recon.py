@@ -169,6 +169,92 @@ def probe_plan() -> list[tuple[int, str]]:
     return PROBES + extra
 
 
+# Class B "data-plane" pack topology: vector-store data-plane port -> product.
+# Deliberately no Redis :6379 (raw RESP stays out of scope — see
+# docs/deep-pack-data-plane.md "Hard boundaries").
+DATA_PLANE_PORTS: dict[int, str] = {19530: "milvus", 6334: "qdrant", 50051: "weaviate"}
+
+# One connect per port per scan, short timeout, small overall budget — no
+# retry storms (pack doctrine).
+CONNECT_TIMEOUT_S = 2.0
+CONNECT_BUDGET_S = 10
+
+
+def connect_plan() -> list[int]:
+    """Ports the data-plane pack connects to (sorted). Source of truth for
+    gather_connects and --dry-run, mirroring probe_plan for GETs."""
+    return sorted(DATA_PLANE_PORTS)
+
+
+async def _connect(
+    sem: asyncio.Semaphore,
+    host: str,
+    port: int,
+    pinned_ips: list[str] | None = None,
+    log: ConnectLog | None = None,
+) -> tuple[int, str]:
+    """One zero-byte TCP connect-and-close to host:port. Returns
+    (port, "accepted"|"refused"|"timeout"). Like _probe, each validated
+    pinned IP is tried in turn (never a fresh DNS answer); an explicit RST is
+    "refused", every other connect failure (black-hole, unreachable) counts as
+    "timeout" — no answer is no answer. Nothing is ever written to the socket."""
+    async with sem:
+        outcome = "timeout"
+        for ip in (pinned_ips or [None]):
+            dial = ip or host
+            if log is not None:
+                log("CONNECT", f"tcp://{host}:{port}", dial)
+            try:
+                _reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(dial, port), CONNECT_TIMEOUT_S
+                )
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except OSError:
+                    pass  # close is best-effort; the handshake already succeeded
+                return port, "accepted"
+            except ConnectionRefusedError:
+                outcome = "refused"
+            except (TimeoutError, OSError):
+                pass  # timeout / unreachable / DNS — try the next pinned IP
+        return port, outcome
+
+
+async def gather_connects(
+    host: str,
+    ports: list[int] | tuple[int, ...],
+    pinned_ips: list[str] | None = None,
+    log: ConnectLog | None = None,
+) -> dict[int, str]:
+    """Class B data-plane pack: zero-byte TCP connect-and-close per port,
+    bounded by CONNECT_BUDGET_S. Returns {port: "accepted"|"refused"|"timeout"}.
+    Reachability only — no protocol bytes, no TLS detection, no banner reads.
+    Runs ONLY when the customer opted in (--deep --deep-packs data-plane
+    --i-own-these-targets); the hosted scanner never calls this.
+
+    Same safety contract as gather_facts: pinned_ips are the ssrf-validated
+    addresses and every connect dials those (never a fresh DNS answer). `log`,
+    when given, is called as log("CONNECT", logical_url, dialed_address)
+    before every attempt — the --verbose connection log."""
+    sem = asyncio.Semaphore(CONCURRENCY)
+    tasks = {
+        asyncio.ensure_future(_connect(sem, host, p, pinned_ips, log)): p
+        for p in sorted(ports)
+    }
+    done, pending = await asyncio.wait(tasks, timeout=CONNECT_BUDGET_S)
+    for t in pending:
+        t.cancel()
+    out = {
+        t.result()[0]: t.result()[1]
+        for t in done
+        if not t.cancelled() and t.exception() is None
+    }
+    for t in pending:
+        out[tasks[t]] = "timeout"
+    return out
+
+
 _REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
 

@@ -47,9 +47,10 @@ def _run_main_with_transport(argv: list[str], transport: httpx.MockTransport):
     calls — same pattern as the transport kwarg in scan() itself."""
     orig = scan_mod.scan
 
-    async def scan_with_transport(target, allow_private=False, services=None, log=None):
+    async def scan_with_transport(target, allow_private=False, services=None, log=None,
+                                  probe_mode=None):
         return await orig(target, allow_private=allow_private, services=services,
-                          transport=transport, log=log)
+                          transport=transport, log=log, probe_mode=probe_mode)
 
     scan_mod.scan = scan_with_transport
     out, err = io.StringIO(), io.StringIO()

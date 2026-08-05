@@ -5,8 +5,11 @@ doctrine, and air-gapped inventory. Near-zero false positives.
 
 Class B (--deep) — reserved for customer-run estate checks that may go beyond
 GET-only (authenticated headers, limited POSTs, future runtime packs).
-Requires an explicit ownership acknowledgement. No Class B packs ship yet;
-the flag exists so the contract and CLI are stable before packs land.
+Requires an explicit ownership acknowledgement.
+
+Packs shipped: "data-plane" — zero-byte TCP connect-and-close to the Milvus /
+Qdrant / Weaviate data-plane ports (reachability only; see
+docs/deep-pack-data-plane.md and docs/PROBES.md).
 
 Hosted unauth.dev never enables Class B.
 """
@@ -21,9 +24,9 @@ ProbeClass = Literal["A", "B"]
 CLASS_A = "A"
 CLASS_B = "B"
 
-# Future: names of opt-in deep packs (e.g. "auth-header", "mcp-post-tools").
-# Empty until a design partner asks for a concrete check.
-DEEP_PACKS_AVAILABLE: tuple[str, ...] = ()
+# Opt-in deep packs. "data-plane": TCP connect (0 bytes) to vector-store data
+# planes — the first Class B pack (docs/deep-pack-data-plane.md).
+DEEP_PACKS_AVAILABLE: tuple[str, ...] = ("data-plane",)
 
 
 @dataclass(frozen=True)
@@ -34,19 +37,34 @@ class ProbeMode:
     i_own_these_targets: bool
 
     def to_dict(self) -> dict:
+        data_plane = "data-plane" in self.deep_packs
         return {
             "probe_class": self.probe_class,
             "deep": self.deep,
             "deep_packs": list(self.deep_packs),
             "deep_packs_available": list(DEEP_PACKS_AVAILABLE),
             "i_own_these_targets": self.i_own_these_targets,
-            "methods": ["GET"] if self.probe_class == CLASS_A else ["GET", "(pack-defined)"],
+            "methods": (
+                ["GET"]
+                if self.probe_class == CLASS_A
+                else (
+                    ["GET", "TCP connect (0 bytes)"]
+                    if data_plane
+                    else ["GET", "(pack-defined)"]
+                )
+            ),
             "note": (
                 "Class A: GET-only metadata probes."
                 if self.probe_class == CLASS_A
                 else (
-                    "Class B acknowledged; no deep packs are enabled in this "
-                    "build — behavior matches Class A until packs ship."
+                    "Class B with data-plane pack: GET probes plus zero-byte "
+                    "TCP connect-and-close to vector-store data-plane ports "
+                    "(reachability only — no bytes sent, no auth attempted)."
+                    if data_plane
+                    else (
+                        "Class B acknowledged; no deep packs are enabled in this "
+                        "build — behavior matches Class A until packs ship."
+                    )
                 )
             ),
         }

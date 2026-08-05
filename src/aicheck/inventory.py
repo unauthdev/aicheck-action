@@ -232,6 +232,7 @@ async def scan_target(
     allow_private: bool,
     services: list[str] | None,
     transport: httpx.AsyncBaseTransport | None,
+    probe_mode: ProbeMode | None = None,
 ) -> dict[str, Any]:
     host = str(target["host"])
     row_base = {"host": host, "owner": target.get("owner"), "env": target.get("env")}
@@ -241,6 +242,7 @@ async def scan_target(
             allow_private=allow_private,
             services=services,
             transport=transport,
+            probe_mode=probe_mode,
         )
     except TargetRejected as exc:
         return {
@@ -319,6 +321,7 @@ async def _run_sweep(
                 allow_private=allow_private,
                 services=services,
                 transport=transport,
+                probe_mode=mode,
             )
 
     results = list(await asyncio.gather(*(_one(t) for t in targets)))
@@ -612,8 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Class B gate: customer-run estate mode (requires "
-            "--i-own-these-targets). No deep packs ship yet — traffic still "
-            "matches Class A until packs are added."
+            "--i-own-these-targets); enables opt-in deep packs"
         ),
     )
     ap.add_argument(
@@ -624,7 +626,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--deep-packs",
         default="",
-        help="comma-separated Class B packs (none available yet)",
+        help=(
+            "comma-separated Class B packs (available: data-plane — zero-byte "
+            "TCP connects to vector-store data-plane ports)"
+        ),
     )
     args = ap.parse_args(argv)
 

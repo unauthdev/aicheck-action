@@ -142,9 +142,11 @@ def _run_scan(argv: list[str]):
 
     orig = scan_mod.scan
 
-    async def scan_with_transport(target, allow_private=False, services=None, log=None):
+    async def scan_with_transport(target, allow_private=False, services=None, log=None,
+                                  probe_mode=None):
         return await orig(target, allow_private=allow_private, services=services,
-                          transport=httpx.MockTransport(handler), log=log)
+                          transport=httpx.MockTransport(handler), log=log,
+                          probe_mode=probe_mode)
 
     scan_mod.scan = scan_with_transport
     out, err = io.StringIO(), io.StringIO()

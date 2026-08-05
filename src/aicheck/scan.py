@@ -32,6 +32,7 @@ import sys
 import httpx
 
 from . import __version__, recon, sarif, ssrf
+from .probe_class import ProbeClassError, ProbeMode, resolve_probe_mode
 from .scoring import grade, run_checkers
 
 _BADNESS = {"A": 0, "C": 1, "D": 2, "F": 3}
@@ -76,21 +77,32 @@ def _services_wanted(finding, wanted: set[str]) -> bool:
 async def scan(target: str, allow_private: bool = False,
                services: list[str] | None = None,
                transport: httpx.AsyncBaseTransport | None = None,
-               log: recon.ConnectLog | None = None) -> tuple[str, list[dict], list[dict], dict]:
+               log: recon.ConnectLog | None = None,
+               probe_mode: ProbeMode | None = None) -> tuple[str, list[dict], list[dict], dict]:
     """Returns (grade, findings, observations, coverage). Raises
     ssrf.TargetRejected on bad targets. coverage (recon.coverage_stats) tells
     the caller how much of the probe plan was answered — a dead/filtered host
     grades A on partial facts. observations are fingerprinted-but-auth-walled
     services (severity INFO): reported, never graded. `log`, when given,
     receives (method, logical_url, dialed_address) before every outbound
-    request — the --verbose connection log."""
+    request — the --verbose connection log.
+
+    `probe_mode` is the resolved Class A/B gate (probe_class.resolve_probe_
+    mode). Only when it carries the "data-plane" pack does the scan also send
+    zero-byte TCP connects to the vector-store data-plane ports and let the
+    connect-aware checkers conjoin them with the Class A fingerprints."""
     if allow_private:
         host, ips = resolve_internal(target)
     else:
         host, ips = ssrf.validate_target(target)
     facts = await recon.gather_facts(host, transport=transport, pinned_ips=ips, log=log)
     coverage = recon.coverage_stats(facts)
-    findings, observations = run_checkers(facts, host)
+    connects = None
+    if probe_mode is not None and "data-plane" in probe_mode.deep_packs:
+        connects = await recon.gather_connects(
+            host, recon.connect_plan(), pinned_ips=ips, log=log
+        )
+    findings, observations = run_checkers(facts, host, connects=connects)
     if services:
         wanted = {s.lower() for s in services}
         findings = [f for f in findings if _services_wanted(f, wanted)]
@@ -176,9 +188,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-version-check", action="store_true",
                     help="skip the weekly PyPI version check "
                          "(also: AICHECK_NO_VERSION_CHECK=1)")
+    ap.add_argument("--deep", action="store_true",
+                    help="Class B gate: customer-run estate mode (requires "
+                         "--i-own-these-targets); enables opt-in deep packs")
+    ap.add_argument("--i-own-these-targets", action="store_true",
+                    help="required with --deep: you authorize probing this "
+                         "target beyond Class A")
+    ap.add_argument("--deep-packs", default="",
+                    help="comma-separated Class B packs (available: data-plane — "
+                         "zero-byte TCP connects to vector-store data-plane ports)")
     ap.add_argument("--version", action="version",
                     version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
+
+    packs = [s.strip() for s in args.deep_packs.split(",") if s.strip()]
+    try:
+        probe_mode = resolve_probe_mode(
+            deep=args.deep,
+            i_own_these_targets=args.i_own_these_targets,
+            deep_packs=packs,
+        )
+    except ProbeClassError as exc:
+        print(f"probe class error: {exc}", file=sys.stderr)
+        return 2
 
     if args.dry_run:
         urls = sorted(
@@ -187,6 +219,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"# aicheck would send these {len(urls)} read-only GET requests to {args.target}:")
         print("\n".join(urls))
+        if "data-plane" in probe_mode.deep_packs:
+            connects = [
+                f"CONNECT tcp://{args.target}:{port} (0 bytes)"
+                for port in recon.connect_plan()
+            ]
+            print(f"# plus these {len(connects)} zero-byte TCP connects "
+                  "(Class B data-plane pack — connect-and-close, nothing sent):")
+            print("\n".join(connects))
         return 0
 
     dialed: list[str] = []
@@ -199,7 +239,8 @@ def main(argv: list[str] | None = None) -> int:
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
     try:
         g, findings, observations, coverage = asyncio.run(
-            scan(args.target, allow_private=args.allow_private, services=services, log=log))
+            scan(args.target, allow_private=args.allow_private, services=services,
+                 log=log, probe_mode=probe_mode))
     except ssrf.TargetRejected as exc:
         print(f"target rejected: {exc}", file=sys.stderr)
         return 2
@@ -215,6 +256,10 @@ def main(argv: list[str] | None = None) -> int:
                "observations": observations, "coverage": coverage}
     if services:
         payload["services_filter"] = services
+    if probe_mode.probe_class != "A":
+        # Class B is customer-run-only; the payload must say which traffic
+        # produced these findings (docs/PROBES.md).
+        payload["probe_mode"] = probe_mode.to_dict()
     if args.format == "json":
         print(json.dumps(payload, indent=2))
     elif args.format == "sarif":

@@ -32,11 +32,19 @@ from __future__ import annotations
 import re
 
 from ..models import Finding, ProbeResult
+from ..recon import DATA_PLANE_PORTS
 from .auth_wall import observation, walled
 from .risk_classes import AGENT_MEMORY, with_risk
 
 CHECK_ID = "milvus"
 FIX_CARD_ID = "milvus-exposed"
+
+# Class B data-plane pack (docs/deep-pack-data-plane.md): separate finding,
+# gated on the Class A fingerprint AND a zero-byte TCP accept on the gRPC
+# data-plane port. recon.DATA_PLANE_PORTS owns the probe topology.
+DATA_PLANE_CHECK_ID = "milvus-dataplane"
+DATA_PLANE_FIX_CARD_ID = "milvus-dataplane-exposed"
+DATA_PLANE_PORT = next(p for p, name in DATA_PLANE_PORTS.items() if name == "milvus")
 
 _VERSION_RE = re.compile(r"milvus/(\d+(?:\.\d+)*)", re.IGNORECASE)
 
@@ -71,6 +79,31 @@ def _is_milvus_service(p: ProbeResult) -> bool:
     return header_says_milvus or (health_shape and header_says_milvus)
 
 
+def _walled_marker(facts: dict[str, ProbeResult]) -> ProbeResult | None:
+    """Auth-walled Milvus: a :9091 probe answered 401/403 with the Milvus
+    Server header — the SAME product-unique bar as the exposure fingerprint.
+    A bare 401 on :9091 is NOT evidence."""
+    return next(
+        (
+            p
+            for key in ("9091:/healthz", "9091:/")
+            if (p := facts.get(key)) is not None
+            and walled(p)
+            and (p.server or "").lower().startswith("milvus")
+        ),
+        None,
+    )
+
+
+def _product_fingerprinted(facts: dict[str, ProbeResult]) -> bool:
+    """Class A leg of the data-plane conjunction: the Milvus service itself
+    answered (exposure fingerprint) or its walled response identified it.
+    Attu alone does NOT qualify — the UI can attach to a Milvus on another
+    host, so it never proves the data plane behind THIS host."""
+    svc = _service_probe(facts)
+    return (svc is not None and _is_milvus_service(svc)) or _walled_marker(facts) is not None
+
+
 def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
     findings: list[Finding] = []
 
@@ -96,18 +129,9 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             )
         )
     else:
-        # Auth-walled Milvus: a :9091 probe answered 401/403 with the Milvus
-        # Server header — same product-unique bar as the exposure fingerprint.
-        hit = next(
-            (
-                p
-                for key in ("9091:/healthz", "9091:/")
-                if (p := facts.get(key)) is not None
-                and walled(p)
-                and (p.server or "").lower().startswith("milvus")
-            ),
-            None,
-        )
+        # Auth-walled Milvus: the walled response itself identifies the
+        # product — same product-unique bar as the exposure fingerprint.
+        hit = _walled_marker(facts)
         if hit is not None:
             findings.append(
                 observation(
@@ -150,4 +174,44 @@ def detect(facts: dict[str, ProbeResult]) -> list[Finding]:
             )
             break
 
+    return findings
+
+
+def detect_with_connects(
+    facts: dict[str, ProbeResult], connects: dict[int, str]
+) -> list[Finding]:
+    """Class B entrypoint (data-plane pack): detect(facts) plus a SEPARATE
+    data-plane finding when the conjunction holds — Milvus identified by
+    Class A on this host AND the gRPC port accepted a zero-byte connect.
+
+    Evidence doctrine: the finding claims reachability ONLY ("accepts
+    connections from the prober's position"). Connect-only cannot know
+    whether gRPC auth/TLS is required or vector data is readable, so the
+    evidence never claims either — CRITICAL stays reserved for proven
+    unauthenticated data access, which this probe can never prove."""
+    findings = detect(facts)
+    if _product_fingerprinted(facts) and connects.get(DATA_PLANE_PORT) == "accepted":
+        findings.append(
+            Finding(
+                check_id=DATA_PLANE_CHECK_ID,
+                product="Milvus",
+                title="Milvus gRPC data plane (:19530) accepts connections",
+                severity="HIGH",
+                url="tcp://TARGET:19530/",
+                evidence=(
+                    "TCP connect accepted — 0 bytes sent to the Milvus gRPC "
+                    "data plane (:19530), and the same host was fingerprinted "
+                    "as Milvus by the Class A HTTP probes (:9091 Server "
+                    "header) — the data plane accepts connections from the "
+                    "prober's position. Reachability only: connect-only "
+                    "cannot tell whether gRPC auth or TLS is required or "
+                    "whether vector data is readable"
+                ),
+                fix_card_id=DATA_PLANE_FIX_CARD_ID,
+                details=with_risk(
+                    {"data_plane_port": DATA_PLANE_PORT, "method": "tcp-connect-0-bytes"},
+                    AGENT_MEMORY,
+                ),
+            )
+        )
     return findings

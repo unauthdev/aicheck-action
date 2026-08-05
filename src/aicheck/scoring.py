@@ -21,6 +21,11 @@ _GRADE_BY_SEVERITY = {"CRITICAL": "F", "HIGH": "D", "MEDIUM": "C"}
 # INFO ranks 0: observations never move the grade, even on a mixed list.
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "INFO": 0}
 
+# Checkers that accept Class B connect results (data-plane pack) through a
+# detect_with_connects(facts, connects) entrypoint. Every other checker keeps
+# the plain detect(facts) signature and never sees connect data.
+_CONNECT_AWARE = frozenset({"milvus", "qdrant", "weaviate"})
+
 
 def grade(findings: list[Finding]) -> str:
     worst = "A"
@@ -33,16 +38,27 @@ def grade(findings: list[Finding]) -> str:
     return worst
 
 
-def run_checkers(facts: dict, target: str) -> tuple[list[Finding], list[Finding]]:
+def run_checkers(
+    facts: dict, target: str, connects: dict[int, str] | None = None
+) -> tuple[list[Finding], list[Finding]]:
     """Returns (findings, observations). Checkers emit graded severities and
     may also emit INFO observations (auth-walled-but-fingerprinted); the two
     are partitioned here so no downstream consumer can grade an observation
-    by accident."""
+    by accident.
+
+    `connects` is the Class B data-plane pack's {port: "accepted"|...} map
+    from recon.gather_connects. None means Class A: no checker sees connect
+    results and no data-plane finding can be emitted — the hosted scanner
+    (engine.run_scan) always runs this way."""
     findings: list[Finding] = []
     observations: list[Finding] = []
     for checker in ALL_CHECKERS:
         try:
-            for f in checker.detect(facts):
+            if connects is not None and getattr(checker, "CHECK_ID", None) in _CONNECT_AWARE:
+                emitted = checker.detect_with_connects(facts, connects)
+            else:
+                emitted = checker.detect(facts)
+            for f in emitted:
                 (observations if f.severity == "INFO" else findings).append(f)
         except Exception as exc:
             # One broken checker must never kill a scan — but it must not be
