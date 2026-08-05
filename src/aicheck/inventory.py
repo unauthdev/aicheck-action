@@ -23,7 +23,7 @@ from typing import Any
 
 import httpx
 
-from . import scan
+from . import flowlogs, scan
 from .inventory_findings import enrich_finding
 from .inventory_targets import TargetLoadError, load_targets
 from .inventory_webhook import WebhookError, post_webhook
@@ -54,6 +54,22 @@ def run_id_from(ts: str) -> str:
 
 def _norm_host(value: str) -> str:
     return value.strip().lower().rstrip(".")
+
+
+def _merge_targets(
+    loaded: list[dict[str, str | None]],
+    discovered: list[dict[str, str | None]],
+) -> list[dict[str, str | None]]:
+    """Union of --targets and flow-discovered targets, deduped by normalized
+    host (loaded rows win — they may carry owner/env)."""
+    out = list(loaded)
+    seen = {_norm_host(str(t["host"])) for t in out}
+    for t in discovered:
+        key = _norm_host(str(t["host"]))
+        if key not in seen:
+            seen.add(key)
+            out.append(t)
+    return out
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -447,6 +463,38 @@ def render_text(report: dict[str, Any]) -> str:
             f"  note: services filter active ({', '.join(report['services_filter'])}) "
             "— other products were not probed or graded"
         )
+    passive = report.get("passive")
+    if passive:
+        # Flow-attributed candidates: visibility from telemetry alone. Every
+        # row stays content-unverified unless a --verify sweep confirmed it.
+        lines.append("PASSIVE DISCOVERY (flow-attributed — analysis of flow logs, no scan traffic):")
+        lines.append(
+            f"  source: {passive.get('source')} ({passive.get('format')}, "
+            f"{passive.get('lines_total', 0)} lines, "
+            f"{passive.get('lines_malformed', 0)} malformed skipped)"
+        )
+        win = passive.get("window") or {}
+        if win.get("start"):
+            lines.append(f"  window: {win.get('start')} → {win.get('end')}")
+        for host in passive.get("hosts") or []:
+            lines.append(f"  {host['host']}:")
+            for row in host.get("rows") or []:
+                lines.append(
+                    f"    [{row['tier']}] {row['title']} — {row['verification']}"
+                )
+                lines.append(f"      {row['evidence']}")
+                if row.get("scanner_observation"):
+                    lines.append(f"      scanner: {row['scanner_observation']}")
+            for hint in host.get("hints") or []:
+                lines.append(f"    hint: {hint}")
+        if not passive.get("hosts"):
+            lines.append("  no AI-port flow evidence found")
+        if passive.get("targets_path"):
+            lines.append(
+                f"  discovered targets: {passive['targets_path']} "
+                "(feeds back as --targets input, or re-run with --verify)"
+            )
+        lines.append("")
     lines.append("")
     if d["new"]:
         lines.append("NEW:")
@@ -480,7 +528,11 @@ def render_text(report: dict[str, Any]) -> str:
             )
         lines.append("")
     if not d["new"] and not d["fixed"] and not d.get("changed"):
-        lines.append("No drift since last run." if report["finding_count"] else "Clean — no exposed AI services found.")
+        if passive and not report.get("targets"):
+            # Passive-only run: nothing was probed, so "clean" would be a lie.
+            lines.append("Passive-only run — no hosts probed, no findings produced.")
+        else:
+            lines.append("No drift since last run." if report["finding_count"] else "Clean — no exposed AI services found.")
         lines.append("")
     not_scanned = [
         t for t in report.get("targets") or [] if t.get("status") != "done"
@@ -522,9 +574,45 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--targets",
-        required=True,
         type=Path,
-        help="YAML/JSON/CSV/JSONL targets (host lines, CIDRs, or flow-log-ish exports)",
+        help=(
+            "YAML/JSON/CSV/JSONL targets (host lines, CIDRs, or flow-log-ish "
+            "exports). Optional when --flow-logs is given."
+        ),
+    )
+    ap.add_argument(
+        "--flow-logs",
+        type=Path,
+        help=(
+            "passive discovery: AWS VPC Flow Logs (text, plain or .gz) or "
+            "generic JSONL flow records. Offline analysis only — no traffic "
+            "is sent unless --verify is added. See docs/flow-logs.md."
+        ),
+    )
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help=(
+            "with --flow-logs: sweep the flow-discovered hosts through the "
+            "normal probe engine and merge results (requires --allow-private "
+            "--i-own-these-targets)"
+        ),
+    )
+    ap.add_argument(
+        "--targets-out",
+        type=Path,
+        help=(
+            "where to write flow-discovered targets JSONL "
+            "(default: <state-dir>/flow-targets.jsonl)"
+        ),
+    )
+    ap.add_argument(
+        "--scanner-networks",
+        default="",
+        help=(
+            "comma-separated CIDRs added to the built-in internet-scanner "
+            "seed list (Censys/Shodan) used for scanner-source detection"
+        ),
     )
     ap.add_argument(
         "--state-dir",
@@ -633,26 +721,87 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    try:
-        targets = load_targets(
-            args.targets,
-            max_hosts=args.max_hosts,
-            expand_cidrs=not args.no_expand_cidrs,
-        )
-    except (OSError, TargetLoadError, json.JSONDecodeError, ValueError) as exc:
-        print(f"targets error: {exc}", file=sys.stderr)
-        return 2
-    if not targets:
-        print("targets error: empty list", file=sys.stderr)
-        return 2
-    if len(targets) > args.max_total_targets:
+    # Passive discovery first: flow logs attribute candidates without sending
+    # a single packet. The sweep below only runs for plain --targets runs or
+    # an explicit --verify.
+    passive = None
+    if args.flow_logs:
+        extra_nets = [s.strip() for s in args.scanner_networks.split(",") if s.strip()]
+        try:
+            passive = flowlogs.analyze(args.flow_logs, extra_networks=extra_nets)
+        except (OSError, flowlogs.FlowLogError, ValueError) as exc:
+            print(f"flow-logs error: {exc}", file=sys.stderr)
+            return 2
+    if not args.targets and passive is None:
         print(
-            f"targets error: {len(targets)} targets after expansion exceeds "
-            f"--max-total-targets {args.max_total_targets} "
-            "(raise the flag, or split the sweep)",
+            "targets error: one of --targets or --flow-logs is required",
             file=sys.stderr,
         )
         return 2
+    if args.verify:
+        if passive is None:
+            print(
+                "flow-logs error: --verify only applies with --flow-logs",
+                file=sys.stderr,
+            )
+            return 2
+        if not args.allow_private:
+            print(
+                "probe class error: --verify requires --allow-private "
+                "--i-own-these-targets (flow-discovered hosts are internal; "
+                "acknowledge you own / are authorized to probe them)",
+                file=sys.stderr,
+            )
+            return 2
+    if args.targets and passive is not None and not args.verify:
+        print(
+            "flow-logs error: --flow-logs without --verify is passive-only "
+            "(no traffic sent); drop --targets or add --verify",
+            file=sys.stderr,
+        )
+        return 2
+
+    targets: list[dict[str, str | None]] = []
+    if args.targets:
+        try:
+            targets = load_targets(
+                args.targets,
+                max_hosts=args.max_hosts,
+                expand_cidrs=not args.no_expand_cidrs,
+            )
+        except (OSError, TargetLoadError, json.JSONDecodeError, ValueError) as exc:
+            print(f"targets error: {exc}", file=sys.stderr)
+            return 2
+
+    if passive is not None:
+        # The discovered target list feeds straight back as --targets input.
+        targets_path = args.targets_out or (args.state_dir / "flow-targets.jsonl")
+        try:
+            targets_path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(
+                targets_path,
+                flowlogs.targets_to_jsonl(passive["discovered_targets"]),
+            )
+        except OSError as exc:
+            print(f"flow-logs error: cannot write {targets_path}: {exc}", file=sys.stderr)
+            return 2
+        passive["targets_path"] = str(targets_path)
+        if args.verify:
+            targets = _merge_targets(targets, passive["discovered_targets"])
+
+    sweep = passive is None or args.verify
+    if sweep:
+        if not targets:
+            print("targets error: empty list", file=sys.stderr)
+            return 2
+        if len(targets) > args.max_total_targets:
+            print(
+                f"targets error: {len(targets)} targets after expansion exceeds "
+                f"--max-total-targets {args.max_total_targets} "
+                "(raise the flag, or split the sweep)",
+                file=sys.stderr,
+            )
+            return 2
 
     if args.allow_private and not args.i_own_these_targets:
         print(
@@ -675,20 +824,59 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     services = [s.strip() for s in args.services.split(",") if s.strip()] or None
-    try:
-        report = asyncio.run(
-            run_inventory(
-                targets,
-                args.state_dir,
-                allow_private=args.allow_private,
-                services=services,
-                probe_mode=probe_mode,
-                force=args.force,
+    if passive is not None and not args.verify:
+        # Passive-only: no sweep, no state mutation (no findings are produced,
+        # so prior state.json stays untouched), zero traffic.
+        started = utc_now()
+        rid = run_id_from(started)
+        if (args.state_dir / "runs" / f"{rid}.json").exists():
+            rid = f"{rid}-{secrets.token_hex(2)}"
+        report = {
+            "schema_version": SCHEMA_VERSION,
+            "run_id": rid,
+            "started_at": started,
+            "finished_at": utc_now(),
+            "target_count": 0,
+            "finding_count": 0,
+            "services_filter": None,
+            "drift": {
+                "new_count": 0,
+                "fixed_count": 0,
+                "changed_count": 0,
+                "still_open_count": 0,
+                "new": [],
+                "fixed": [],
+                "changed": [],
+                "still_open": [],
+            },
+            "targets": [],
+            "phone_home": False,
+            "probe_model": "docs/PROBES.md",
+            "probe_mode": probe_mode.to_dict(),
+            "passive": passive,
+        }
+        write_run(args.state_dir, report)
+    else:
+        try:
+            report = asyncio.run(
+                run_inventory(
+                    targets,
+                    args.state_dir,
+                    allow_private=args.allow_private,
+                    services=services,
+                    probe_mode=probe_mode,
+                    force=args.force,
+                )
             )
-        )
-    except InventoryLockError as exc:
-        print(f"lock error: {exc}", file=sys.stderr)
-        return 2
+        except InventoryLockError as exc:
+            print(f"lock error: {exc}", file=sys.stderr)
+            return 2
+        if passive is not None:
+            # --verify: upgrade passive rows the Class A engine confirmed;
+            # unconfirmed rows keep their honest "unverified" label.
+            flowlogs.merge_verification(passive, report)
+            report["passive"] = passive
+            write_run(args.state_dir, report)
 
     if args.format == "json":
         print(json.dumps(report, indent=2))

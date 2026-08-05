@@ -23,6 +23,7 @@ bump `schema_version`.
 | `phone_home` | bool | Always `false`. Inventory is local-only. |
 | `probe_model` | string | Pointer to `docs/PROBES.md` (traffic contract). |
 | `probe_mode` | object | `ProbeMode.to_dict()` — probe class, deep flags, methods, note. |
+| `passive` | object | **Additive within v1.** Present only when the run used `--flow-logs`. See below. |
 
 ## `drift`
 
@@ -63,6 +64,50 @@ Observations are **never graded** and deliberately **not diffed by drift in
 v1**: they carry no `finding_id`, enter no drift bucket, and are not
 persisted to `state.json`. Diffing observations is a deliberate deferral,
 candidates for a future schema version.
+
+## `passive` (additive within v1)
+
+Present only on runs with `--flow-logs` (see `docs/flow-logs.md`). Produced
+by `flowlogs.analyze` (`aicheck/flowlogs.py`) — offline analysis of VPC flow
+telemetry; a passive-only run sends no traffic, sweeps nothing, and does not
+touch `state.json`. Passive rows are **not** findings: they enter no drift
+bucket, carry no `finding_id`, and are never graded.
+
+| field | type | meaning |
+|---|---|---|
+| `source` | string | Flow-log file analyzed. |
+| `format` | string | `aws-vpc-flow-text` or `jsonl`. |
+| `lines_total` / `lines_malformed` | int | Lines seen / skipped as malformed (never fatal). |
+| `flows_rejected_action` | int | Flows with non-ACCEPT action (not usage). |
+| `window` | object \| null | `{start, end}` ISO UTC across all flows. |
+| `scanner_networks` | list[string] | Scanner CIDRs in effect (seed + `--scanner-networks`). |
+| `hosts` | list[object] | Per-host passive evidence (below). |
+| `discovered_targets` | list[object] | `{host, owner, env}` rows — feeds back as `--targets` input (targets JSONL v1). |
+| `targets_path` | string \| null | Where the discovered-targets JSONL was written. |
+
+### `passive.hosts[]` row
+
+`{host, rows, observations, hints}`. `observations` holds
+`"already internet-scanned / likely in public indexes"` when AI ports
+received ACCEPTED connections from scanner networks. `hints` holds
+`"possible Attu UI — verify with a probe"` only when the host has BOTH a
+Milvus flow-candidate (:9091/:19530) AND web flows on :3000/:8000 — a hint,
+never a finding (generic web ports are unattributable passively).
+
+Each `rows[]` entry:
+
+| field | type | meaning |
+|---|---|---|
+| `host` / `product` / `port` | string / string / int | Candidate attribution. |
+| `role` | string | `data-plane` (19530/6334/50051, from recon topology), `management`, `api`, `web`, … |
+| `tier` | string | `port-attributed candidate` (noise-only flows) or `flow-shape corroborated` (≥ 1 real session above the noise rule: `bytes < 200 AND packets <= 2` = probe noise). |
+| `title` | string | e.g. `Milvus candidate — port evidence (data-plane :19530)`. |
+| `accepted_flows` / `real_sessions` / `noise_flows` / `bytes` | int | Flow counts and byte total. |
+| `window` | object | `{start, end}` ISO UTC for this port's flows (values may be null). |
+| `evidence` | string | Always `flow-attributed — content unverified (N accepted flows, X MB, window W)`. |
+| `scanner_observation` / `scanner_sources` | string \| null / list[string] | Set when scanner networks hit this port. |
+| `verification` | string | `unverified — host not probed` (passive-only), or after `--verify`: `probe-verified` / `unverified — probe did not confirm`. |
+
 
 ## finding (enriched)
 
