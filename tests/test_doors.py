@@ -1,7 +1,7 @@
 """Unit tests for the CLI door lines — run standalone: python tests/test_doors.py
 
 Every text output ends with exactly one door line, after the findings:
-- findings → first fix card + the playground deep link (from=cli) carrying
+- findings → first fix card + the demo deep link (from=cli) carrying
   grade, finding count and product slugs only — never the target string;
 - clean → the CI-action link.
 The action summary must keep calling the shared link builder with from=ci,
@@ -60,14 +60,14 @@ def test_findings_door_is_last_line() -> None:
         "fix cards: https://unauth.dev/fixes/ollama-exposed — "), door
     assert door.endswith(
         "see your stack the way the internet sees it: "
-        "https://unauth.dev/playground?from=cli&grade=F&findings=2"
+        "https://unauth.dev/demo?from=cli&grade=F&findings=2"
         "&services=ollama,n8n"), door
-    # exactly one door line: one playground link, one "see your stack" pitch
-    assert out.count("unauth.dev/playground") == 1
+    # exactly one door line: one demo link, one "see your stack" pitch
+    assert out.count("unauth.dev/demo") == 1
     assert out.count("see your stack the way the internet sees it") == 1
     # the door comes after the findings, never before
     assert lines[-3].startswith("  CRITICAL"), lines
-    print("ok — findings output ends with the fix-cards + playground door")
+    print("ok — findings output ends with the fix-cards + demo door")
 
 
 def test_door_url_never_contains_target() -> None:
@@ -79,9 +79,9 @@ def test_door_url_never_contains_target() -> None:
     for target in ("ollama", "10.0.0.1"):
         out = scan_mod.render_text(target, "F", findings)
         door = out.rstrip("\n").splitlines()[-1]
-        playground_url = door.rsplit("sees it: ", 1)[1]
-        assert playground_url.startswith("https://unauth.dev/playground?from=cli")
-        assert target not in playground_url, (target, playground_url)
+        demo_url = door.rsplit("sees it: ", 1)[1]
+        assert demo_url.startswith("https://unauth.dev/demo?from=cli")
+        assert target not in demo_url, (target, demo_url)
     print("ok — door URL carries no target string ('ollama', '10.0.0.1')")
 
 
@@ -114,12 +114,12 @@ def test_action_summary_keeps_from_ci() -> None:
             code = render_mod.main([str(path), "--format", "summary", "--redact"])
     assert code == 0
     out = buf.getvalue()
-    assert "https://unauth.dev/playground?from=ci&grade=F&findings=2" in out, out
+    assert "https://unauth.dev/demo?from=ci&grade=F&findings=2" in out, out
     assert "from=cli" not in out
     print("ok — action summary render still deep-links with from=ci")
 
 
-def test_deep_link_maps_scanner_products_to_playground_ids() -> None:
+def test_deep_link_maps_scanner_products_to_demo_ids() -> None:
     url = render_mod.deep_link("F", [
         {"product": "MCP server"},
         {"product": "Open WebUI"},
@@ -127,8 +127,8 @@ def test_deep_link_maps_scanner_products_to_playground_ids() -> None:
         {"product": "Ollama"},
     ])
     assert "services=mcp,openwebui,crewai,ollama" in url, url
-    assert render_mod.playground_service_id("MCP server") == "mcp"
-    print("ok — deep_link maps scanner products to playground block ids")
+    assert render_mod.demo_service_id("MCP server") == "mcp"
+    print("ok — deep_link maps scanner products to demo service ids")
 
 
 def main() -> int:
@@ -137,7 +137,7 @@ def main() -> int:
     test_clean_door_is_last_line()
     test_link_builder_defined_once()
     test_action_summary_keeps_from_ci()
-    test_deep_link_maps_scanner_products_to_playground_ids()
+    test_deep_link_maps_scanner_products_to_demo_ids()
     print("all door tests passed")
     return 0
 

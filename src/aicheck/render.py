@@ -25,7 +25,7 @@ from .scan import render_text
 
 REDACTED_TARGET = "ci-scan-target"
 BASE_URL = "https://unauth.dev"
-PLAYGROUND_URL = f"{BASE_URL}/playground"
+DEMO_URL = f"{BASE_URL}/demo"
 ACTION_URL = "https://github.com/unauthdev/aicheck-scan"
 MAX_ROWS = 20
 
@@ -113,8 +113,8 @@ def _slug(product: str) -> str:
     return re.sub(r"\s+", "-", product.strip().lower())
 
 
-# Scanner product → playground block id (must match playground.js CI_SLUGS).
-PLAYGROUND_SERVICE_IDS = {
+# Scanner product → demo fixture service id (see /demo _SLUG_TO_CHECK_ID).
+DEMO_SERVICE_IDS = {
     "mcp-server": "mcp",
     "mcp-servers": "mcp",
     "open-webui": "openwebui",
@@ -126,22 +126,22 @@ PLAYGROUND_SERVICE_IDS = {
 }
 
 
-def playground_service_id(product: str) -> str:
-    """Map a finding product name to a playground `services=` slug."""
+def demo_service_id(product: str) -> str:
+    """Map a finding product name to a demo `services=` slug."""
     s = _slug(product)
-    return PLAYGROUND_SERVICE_IDS.get(s, s)
+    return DEMO_SERVICE_IDS.get(s, s)
 
 
 def deep_link(g: str, findings: list[dict], source: str = "ci") -> str:
-    """Playground deep link: grade, finding count, product names only —
+    """Attacker-eye demo deep link: grade, finding count, product names only —
     never the target. `source` is the from= tag: "ci" for the action
     summary, "cli" for the terminal door line."""
     services: list[str] = []
     for f in findings:
-        s = playground_service_id(f["product"])
+        s = demo_service_id(f["product"])
         if s not in services:
             services.append(s)
-    url = f"{PLAYGROUND_URL}?from={source}&grade={g}&findings={len(findings)}"
+    url = f"{DEMO_URL}?from={source}&grade={g}&findings={len(findings)}"
     if services:
         url += "&services=" + ",".join(services)
     return url
