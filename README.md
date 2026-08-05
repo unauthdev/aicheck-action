@@ -120,7 +120,7 @@ What you get on the run page:
 
 Note: `fail-grade: A` fails the build even on a clean scan; it exists to
 smoke-test the wiring on first install.
-| `services` | *(all 17)* | Comma-separated product filter, e.g. `ollama,n8n`. |
+| `services` | *(all 29)* | Comma-separated product filter, e.g. `ollama,n8n`. |
 | `upload-sarif` | `true` | Upload results to code scanning. Set `false` to skip (no `security-events` permission needed then). |
 
 ## Outputs
