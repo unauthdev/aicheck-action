@@ -11,11 +11,13 @@
 One engine, four doors (pip / GitHub Action / Docker / site):
 
 - **`aicheck <target>`** — CI feeder: fail the build if a PR ships an unauthenticated AI service
-- **`aicheck inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `still_open`), no phone-home
+- **`aicheck inventory`** — local continuous inventory: multi-host, stable finding IDs, drift (`new` / `fixed` / `changed` / `still_open`), no phone-home
+- **`aicheck inventory --flow-logs`** — passive discovery: turns VPC flow logs into an attributed AI-service inventory with zero probing (`--verify` sweeps what it finds)
+- **`aicheck template`** — static security scan of n8n / Dify / Flowise workflow template files: embedded secrets, exfil-shaped flows, dangerous nodes
 
 Live-probes Ollama, n8n, vLLM, Langfuse, Open WebUI, ComfyUI, Ray, Dify, Qdrant,
-AnythingLLM, Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis consoles,
-MCP servers and more — grades A–F, SARIF on by default in CI, plain-English fix
+Milvus, AnythingLLM, Jupyter, Gradio, Langflow, Flowise, Chroma, Weaviate, Redis
+consoles, MCP servers and more — grades A–F, SARIF on by default in CI, plain-English fix
 cards. From [unauth.dev](https://unauth.dev).
 
 Install from the [GitHub Marketplace](https://github.com/marketplace/actions/aicheck-scan),
@@ -109,7 +111,7 @@ What you get on the run page:
 > | CRITICAL | Ollama | API exposed without authentication | [fix card](https://unauth.dev/fixes/ollama-exposed) |
 > | HIGH | n8n | settings endpoint readable without authentication | [fix card](https://unauth.dev/fixes/n8n-exposed) |
 >
-> [See your stack the way the internet sees it →](https://unauth.dev/playground?from=ci&grade=F&findings=2&services=ollama,n8n)
+> [See your stack the way the internet sees it →](https://unauth.dev/demo?from=ci&grade=F&findings=2&services=ollama,n8n)
 
 ## Inputs
 
@@ -141,10 +143,28 @@ aicheck scan localhost --allow-private --fail-grade F
 # Local estate inventory (air-gapped; nothing phones home)
 aicheck inventory --targets targets.yaml --state-dir ./state --allow-private
 
-# CSV / flow-log JSONL / CIDRs + webhook to YOUR endpoint on new findings
-aicheck inventory --targets hosts.jsonl --state-dir ./state --allow-private \
-  --webhook https://hooks.example.internal/aicheck --webhook-on new
+# CSV / JSONL / CIDRs + HMAC-signed webhook to YOUR endpoint on new findings
+aicheck inventory --targets hosts.jsonl --state-dir ./state --allow-private --i-own-these-targets \
+  --webhook https://hooks.example.internal/aicheck --webhook-on new --webhook-secret $HOOK_SECRET
+
+# Passive: attribute AI services from flow logs, no packets sent
+aicheck inventory --flow-logs vpc-flow.log.gz --state-dir ./state
+
+# Workflow template files (n8n / Dify / Flowise) — static, zero probing
+aicheck template community-workflow.json --format text
 ```
+
+Three channels in every report: **findings** (no-auth, graded),
+**observations** (auth-walled but fingerprinted, INFO, never graded), and
+**coverage** (a partial scan's clean grade is not proof of clean). Findings
+carry the target-reported version and structured CVE matches
+(`details.cves[]`, version-gated) when the curated map has entries.
+
+Class B (customer-run estates only, gated by `--deep --i-own-these-targets`):
+the `data-plane` pack adds zero-byte TCP connect checks to gRPC data planes
+(Milvus :19530, Qdrant :6334, Weaviate :50051) — "reachable", never "data
+accessible". Default traffic stays GET-only; the hosted scanner and CI Action
+never run Class B.
 
 Probe contract: [`docs/PROBES.md`](docs/PROBES.md).  
 Targets: YAML / CSV / JSONL examples under [`examples/`](examples/).
@@ -223,7 +243,7 @@ aicheck:
     TARGET: ollama            # the service alias — or localhost with a before_script install
   before_script:
     - pip install --quiet httpx pyyaml
-    - git clone --depth 1 --branch v1.1.5 https://github.com/unauthdev/aicheck-scan.git /aicheck
+    - git clone --depth 1 --branch v1.2.5 https://github.com/unauthdev/aicheck-scan.git /aicheck
   script:
     - cd /aicheck
     - python -m aicheck.scan "$TARGET" --allow-private --format json --fail-grade F > "$CI_PROJECT_DIR/aicheck.json" || code=$?
@@ -275,4 +295,7 @@ aicheck example.com --verbose   # log each dialed connection (with pinned IP) to
 
 MIT — see [LICENSE](LICENSE). Fix cards and grading by
 [unauth.dev](https://unauth.dev); findings link to the public fix library at
-`unauth.dev/fixes/`. Security reports: [SECURITY.md](SECURITY.md).
+`unauth.dev/fixes/`. The public advisory dataset (exposure classes + curated
+CVEs, CC-BY 4.0) lives at [`advisories.yaml`](advisories.yaml) and
+[unauth.dev/advisories](https://unauth.dev/advisories). Security reports:
+[SECURITY.md](SECURITY.md).
